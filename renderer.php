@@ -29,8 +29,7 @@
  * @copyright  2016 John Okely <john@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_renderer extends plugin_renderer_base
-{
+class mod_quizgame_renderer extends plugin_renderer_base {
     /**
      * Initialises the game and returns its HTML code
      *
@@ -38,8 +37,7 @@ class mod_quizgame_renderer extends plugin_renderer_base
      * @param context $context The context
      * @return string The HTML code of the game
      */
-    public function render_game($quizgame, $context)
-    {
+    public function render_game($quizgame, $context) {
 
         $categoryid = explode(',', $quizgame->questioncategory)[0];
         $questionids = question_bank::get_finder()->get_questions_from_categories(intval($categoryid), '');
@@ -129,8 +127,7 @@ class mod_quizgame_renderer extends plugin_renderer_base
      * @param stdClass $quizgame
      * @return string
      */
-    public function render_score_link($quizgame)
-    {
+    public function render_score_link($quizgame) {
 
         $url = new moodle_url('/mod/quizgame/scores.php', ['id' => $quizgame->id]);
         $scorestring = get_string('scoreslink', 'quizgame');

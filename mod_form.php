@@ -35,14 +35,12 @@ require_once($CFG->dirroot . '/lib/questionlib.php');
  * @copyright  2014 John Okely <john@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_mod_form extends moodleform_mod
-{
+class mod_quizgame_mod_form extends moodleform_mod {
 
     /**
      * Defines forms elements
      */
-    public function definition()
-    {
+    public function definition() {
         global $CFG, $COURSE;
 
         $mform = $this->_form;
@@ -96,8 +94,7 @@ class mod_quizgame_mod_form extends moodleform_mod
      * Define custom completion rules
      * @return array
      */
-    public function add_completion_rules()
-    {
+    public function add_completion_rules() {
         $mform = &$this->_form;
         $group = [];
         $group[] = &$mform->createElement(
@@ -125,8 +122,7 @@ class mod_quizgame_mod_form extends moodleform_mod
      * @param array $data
      * @return bool
      */
-    public function completion_rule_enabled($data)
-    {
+    public function completion_rule_enabled($data) {
         return (!empty($data['completionscoreenabled']) && $data['completionscore'] != 0);
     }
 
@@ -134,8 +130,7 @@ class mod_quizgame_mod_form extends moodleform_mod
      * Loads custom completion data.
      * @return boolean
      */
-    public function get_data()
-    {
+    public function get_data() {
         $data = parent::get_data();
         if (!$data) {
             return false;
@@ -154,8 +149,7 @@ class mod_quizgame_mod_form extends moodleform_mod
      * Used to pre-populate mform.
      * @param array $defaultvalues
      */
-    public function data_preprocessing(&$defaultvalues)
-    {
+    public function data_preprocessing(&$defaultvalues) {
         parent::data_preprocessing($defaultvalues);
 
         // Set up the completion checkboxes which aren't part of standard data.
