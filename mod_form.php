@@ -81,7 +81,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
         // This element handles finding appropriate categories based on the context.
         // It automatically includes categories from parent contexts (like course or site) if permissions allow.
         $mform->addElement('questioncategory', 'questioncategory', get_string('questioncategory', 'quizgame'), [
-            'contexts' => [$context]
+            'contexts' => [$context],
         ]);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
         $mform->addRule('questioncategory', null, 'required', null, 'client'); // Ensure a category is selected.
