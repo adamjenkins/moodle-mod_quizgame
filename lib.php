@@ -75,16 +75,7 @@ function quizgame_add_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mform
 
     // TODO: Highscores.
 
-    $quizgame->id = $DB->insert_record('quizgame', $quizgame);
-
-    if (!$quizgame->id) {
-        return false;
-    }
-
-    // Create the grade item.
-    quizgame_grade_item_update($quizgame);
-
-    return $quizgame->id;
+    return $DB->insert_record('quizgame', $quizgame);
 }
 
 /**
@@ -104,14 +95,7 @@ function quizgame_update_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mf
     $quizgame->timemodified = time();
     $quizgame->id = $quizgame->instance;
 
-    if (!$DB->update_record('quizgame', $quizgame)) {
-        return false;
-    }
-
-    // Update the grade item.
-    quizgame_grade_item_update($quizgame);
-
-    return true;
+    return $DB->update_record('quizgame', $quizgame);
 }
 
 /**
@@ -372,12 +356,7 @@ function quizgame_grade_item_update(stdClass $quizgame, $grades=null) {
     $item['grademax']  = $quizgame->grade;
     $item['grademin']  = 0;
 
-    if ($grades === 'reset') {
-        $item['reset'] = true;
-        grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, null, $item);
-    } else {
-        grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, $grades, $item);
-    }
+    grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, null, $item);
 }
 
 /**
