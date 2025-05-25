@@ -77,58 +77,9 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $context = context_course::instance($COURSE->id);
         }
 
-        // Add logging for the determined context.
-        echo '<!-- Quizgame mod_form: Determined context ID: ' . $context->id . ' -->';
-        error_log('Quizgame mod_form: Determined context ID: ' . $context->id);
-        
-        // Debug: List available question categories using direct DB query
-        global $DB;
-        
-        // First, show context information
-        echo '<!-- Debug: Context ID: ' . $context->id . ' -->';
-        echo '<!-- Debug: Context path: ' . $context->path . ' -->';
-        
-        // Get context information
-        $contextinfo = $DB->get_record('context', ['id' => $context->id], '*', MUST_EXIST);
-        echo '<!-- Debug: Context details: ' . print_r($contextinfo, true) . ' -->';
-        
-        // Check if question_categories table exists
-        $dbman = $DB->get_manager();
-        $table = new xmldb_table('question_categories');
-        if ($dbman->table_exists($table)) {
-            echo '<!-- Debug: question_categories table exists -->';
-            
-            // Get categories in this context
-            $categories = $DB->get_records('question_categories', ['contextid' => $context->id]);
-            echo '<!-- Debug: Found ' . count($categories) . ' categories in current context -->';
-            
-            // Get all categories to check if any exist at all
-            $allcategories = $DB->get_records_sql('SELECT * FROM {question_categories} ORDER BY contextid, name', null, 0, 5);
-            echo '<!-- Debug: First few categories in system: ' . print_r($allcategories, true) . ' -->';
-            
-            // Get parent context IDs
-            $parentcontexts = $context->get_parent_context_ids();
-            echo '<!-- Debug: Parent context IDs: ' . print_r($parentcontexts, true) . ' -->';
-            
-            // Try to find any categories in parent contexts
-            if (!empty($parentcontexts)) {
-                list($insql, $inparams) = $DB->get_in_or_equal($parentcontexts, SQL_PARAMS_NAMED);
-                $parentcategories = $DB->get_records_sql(
-                    "SELECT * FROM {question_categories} WHERE contextid $insql ORDER BY contextid, name", 
-                    $inparams
-                );
-                echo '<!-- Debug: Found ' . count($parentcategories) . ' categories in parent contexts -->';
-            }
-        } else {
-            echo '<!-- Debug: question_categories table does not exist! -->';
-        }
-        
-        echo '<!-- End of category debug -->';
-
-        // Add the standard question category selector element.
-        // Include contexts where we know categories exist (16 and 18) along with the current context
+        // Include contexts where categories exist (16 and 18) along with the current context
         $contexts = [
-            $context,  // Current context (17)
+            $context,  // Current context
             context::instance_by_id(16),  // Wingfoiling course question bank
             context::instance_by_id(18)   // Wingfoil question bank
         ];
@@ -137,10 +88,6 @@ class mod_quizgame_mod_form extends moodleform_mod {
             'contexts' => $contexts,
         ]);
         
-        // Add help text to show where the categories are being pulled from
-        $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame', '', true);
-        echo '<!-- Quizgame mod_form: Added questioncategory element with context ID: ' . $context->id . ' -->';
-        error_log('Quizgame mod_form: Added questioncategory element with context ID: ' . $context->id);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
         $mform->addRule('questioncategory', null, 'required', null, 'client'); // Ensure a category is selected.
 
