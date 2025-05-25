@@ -77,17 +77,17 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $context = context_course::instance($COURSE->id);
         }
 
-        // Include contexts where categories exist (16 and 18) along with the current context
+        // Include contexts where categories exist (16 and 18) along with the current context.
         $contexts = [
-            $context,  // Current context
-            context::instance_by_id(16),  // Wingfoiling course question bank
-            context::instance_by_id(18)   // Wingfoil question bank
+            $context,  // Current context.
+            context::instance_by_id(16),  // Wingfoiling course question bank.
+            context::instance_by_id(18),  // Wingfoil question bank.
         ];
-        
+
         $mform->addElement('questioncategory', 'questioncategory', get_string('questioncategory', 'quizgame'), [
             'contexts' => $contexts,
         ]);
-        
+
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
         $mform->addRule('questioncategory', null, 'required', null, 'client'); // Ensure a category is selected.
 
