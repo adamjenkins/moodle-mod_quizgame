@@ -6,13 +6,5 @@
     },
     "extra": {
         "installer-name": "quizgame"
-    },
-    "require-dev": {
-        "moodlehq/moodle-plugin-ci": "^1.5"
-    },
-    "config": {
-        "allow-plugins": {
-            "composer/installers": true
-        }
     }
 }
