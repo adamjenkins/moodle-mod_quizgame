@@ -81,14 +81,25 @@ class mod_quizgame_mod_form extends moodleform_mod {
         // Add question category select box with real category names
         $coursecontext = context_course::instance($COURSE->id);
         
-        // Get available question categories for this course (simplified query)
+        // Get the question bank context for this course
         global $DB;
+        $qbankcontext = $DB->get_record('context', [
+            'contextlevel' => 70, // CONTEXT_MODULE for question banks
+            'instanceid' => $COURSE->id
+        ]);
+        
+        if (!$qbankcontext) {
+            // Fallback to course context if question bank context doesn't exist
+            $qbankcontext = $coursecontext;
+        }
+        
+        // Get available question categories from the question bank context
         $categories = $DB->get_records_sql(
             "SELECT c.id, c.name, c.parent, c.contextid
                   FROM {question_categories} c
                  WHERE c.contextid = :contextid
               ORDER BY c.parent, c.sortorder, c.name ASC",
-            ['contextid' => $coursecontext->id]
+            ['contextid' => $qbankcontext->id]
         );
         
         // Build options array for the select box
