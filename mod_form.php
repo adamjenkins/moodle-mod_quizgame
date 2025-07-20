@@ -29,6 +29,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/course/moodleform_mod.php');
 require_once($CFG->dirroot . '/lib/questionlib.php');
+require_once($CFG->dirroot . '/question/editlib.php');
 
 /**
  * Module instance settings form
@@ -77,19 +78,29 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $context = context_course::instance($COURSE->id);
         }
 
-        // Include contexts where categories exist (16 and 18) along with the current context.
-        $contexts = [
-            $context,  // Current context.
-            context::instance_by_id(16),  // Wingfoiling course question bank.
-            context::instance_by_id(18),  // Wingfoil question bank.
-        ];
-
-        $mform->addElement('questioncategory', 'questioncategory', get_string('questioncategory', 'quizgame'), [
-            'contexts' => $contexts,
-        ]);
-
+        // Add question category select box with real category names
+        $coursecontext = context_course::instance($COURSE->id);
+        
+        // Get available question categories for this course (simplified query)
+        global $DB;
+        $categories = $DB->get_records_sql(
+            "SELECT c.id, c.name, c.parent, c.contextid
+                  FROM {question_categories} c
+                 WHERE c.contextid = :contextid
+              ORDER BY c.parent, c.sortorder, c.name ASC",
+            ['contextid' => $coursecontext->id]
+        );
+        
+        // Build options array for the select box
+        $options = ['' => get_string('choosedots')];
+        foreach ($categories as $category) {
+            $name = format_string($category->name, true, ['context' => $coursecontext]);
+            $options[$category->id] = $name;
+        }
+        
+        $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
-        $mform->addRule('questioncategory', null, 'required', null, 'client'); // Ensure a category is selected.
+        $mform->addRule('questioncategory', null, 'required', null, 'client');
 
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
