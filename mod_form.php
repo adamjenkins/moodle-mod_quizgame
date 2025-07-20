@@ -69,21 +69,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
         // Get question categories for this course with proper hierarchy
         $context = context_course::instance($COURSE->id);
         
-        // Get all question categories available to this course
-        // This includes course categories, system categories, and any other accessible categories
+        // Get all question categories available to this course, including module-level (contextlevel 70)
         $categories = $DB->get_records_sql(
             "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
                FROM {question_categories} c
                JOIN {context} ctx ON c.contextid = ctx.id
-              WHERE ctx.contextlevel IN (" . CONTEXT_SYSTEM . ", " . CONTEXT_COURSECAT . ", " . CONTEXT_COURSE . ")
-                AND (ctx.contextlevel = " . CONTEXT_SYSTEM . " 
-                     OR ctx.path LIKE :coursepath 
-                     OR ctx.path LIKE :categorypath)
+              WHERE ctx.contextlevel IN (10, 40, 50, 70)
            ORDER BY c.parent, c.sortorder, c.name ASC",
-            [
-                'coursepath' => $context->path . '/%',
-                'categorypath' => '%/' . $COURSE->category . '/%'
-            ]
+            []
         );
         
         // Build hierarchical options array
