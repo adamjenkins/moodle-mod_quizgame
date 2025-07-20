@@ -62,7 +62,6 @@ Quizventure is an activity module that loads quiz questions from the course it\'
 **Note**: Quizventure is designed to promote learning rather than for assessment. Students will have infinite attempts with instant feedback. For this reason, only add questions you want students to learn the answer to, rather than questions you want to assess if they have learned';
 $string['modulenameplural'] = 'Quizventure games';
 $string['modulename'] = 'Quizventure';
-$string['noquestioncategoryset'] = 'No question category has been set for this Quizventure. Please contact your teacher.';
 $string['notyetplayed'] = 'Not yet played';
 $string['playedxtimeswithhighscore'] = 'Played {$a->times} times. The last game ended with a high score of {$a->score}';
 $string['pluginadministration'] = 'Quizventure administration';

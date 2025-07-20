@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+// along with Moodle.  If not, see <http://www.gnu.org/copyleft/gpl.html>.
 
 /**
  * Prints a particular instance of quizgame
@@ -25,8 +25,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
-require_once(dirname(__FILE__) . '/lib.php');
+require_once(dirname(dirname(dirname(__FILE__))).'/config.php');
+require_once(dirname(__FILE__).'/lib.php');
 require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
 $id = optional_param('id', 0, PARAM_INT); // Either course_module ID, or ...
@@ -44,23 +44,14 @@ if ($id) {
     throw new moodle_exception('invalidcmorid', 'quizgame');
 }
 
-// Check if a question category is set before proceeding further.
-if (empty($quizgame->questioncategory)) {
-    // Standard error functions seem unavailable/broken, so die directly.
-    die(get_string('noquestioncategoryset', 'mod_quizgame'));
-}
-
 $cm = cm_info::create($cm);
 require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
 
-
-
 // Trigger module viewed event.
 $event = \mod_quizgame\event\course_module_viewed::create(
-    [
-        'objectid' => $quizgame->id,
-        'context' => $context,
+    ['objectid' => $quizgame->id,
+    'context' => $context,
     ]
 );
 

@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+// along with Moodle.  If not, see <http://www.gnu.org/copyleft/gpl.html>.
 
 /**
  * The main quizgame configuration form
@@ -27,9 +27,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot . '/course/moodleform_mod.php');
-require_once($CFG->dirroot . '/lib/questionlib.php');
-require_once($CFG->dirroot . '/question/editlib.php');
+require_once($CFG->dirroot.'/course/moodleform_mod.php');
+require_once($CFG->dirroot.'/lib/questionlib.php');
 
 /**
  * Module instance settings form
@@ -42,7 +41,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * Defines forms elements
      */
     public function definition() {
-        global $CFG, $COURSE;
+        global $CFG, $COURSE, $DB;
 
         $mform = $this->_form;
 
@@ -67,46 +66,19 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $this->add_intro_editor();
         }
 
-        // Get the appropriate context for category selection.
-        $context = null;
-        if (!empty($this->current->instance)) {
-            // Editing existing: Use module context.
-            $cm = get_coursemodule_from_instance('quizgame', $this->current->instance, $COURSE->id, false, MUST_EXIST);
-            $context = context_module::instance($cm->id);
-        } else {
-            // Creating new: Use course context.
-            $context = context_course::instance($COURSE->id);
-        }
-
-        // Add question category select box with real category names
-        $coursecontext = context_course::instance($COURSE->id);
-        
-        // Get the question bank context for this course
-        global $DB;
-        $qbankcontext = $DB->get_record('context', [
-            'contextlevel' => 70, // CONTEXT_MODULE for question banks
-            'instanceid' => $COURSE->id
-        ]);
-        
-        if (!$qbankcontext) {
-            // Fallback to course context if question bank context doesn't exist
-            $qbankcontext = $coursecontext;
-        }
-        
-        // Get available question categories from the question bank context
+        // Get question categories for this course
+        $context = context_course::instance($COURSE->id);
         $categories = $DB->get_records_sql(
-            "SELECT c.id, c.name, c.parent, c.contextid
-                  FROM {question_categories} c
-                 WHERE c.contextid = :contextid
-              ORDER BY c.parent, c.sortorder, c.name ASC",
-            ['contextid' => $qbankcontext->id]
+            "SELECT c.id, c.name 
+               FROM {question_categories} c
+              WHERE c.contextid = :contextid
+           ORDER BY c.name ASC",
+            ['contextid' => $context->id]
         );
         
-        // Build options array for the select box
         $options = ['' => get_string('choosedots')];
         foreach ($categories as $category) {
-            $name = format_string($category->name, true, ['context' => $coursecontext]);
-            $options[$category->id] = $name;
+            $options[$category->id] = format_string($category->name);
         }
         
         $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
@@ -124,23 +96,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * @return array
      */
     public function add_completion_rules() {
-        $mform = &$this->_form;
+        $mform =& $this->_form;
         $group = [];
-        $group[] = &$mform->createElement(
-            'checkbox',
-            'completionscoreenabled',
-            '',
-            get_string('completionscore', 'quizgame')
-        );
-        $group[] = &$mform->createElement('text', 'completionscore', '', ['size' => 3]);
+        $group[] =& $mform->createElement('checkbox', 'completionscoreenabled', '',
+                get_string('completionscore', 'quizgame'));
+        $group[] =& $mform->createElement('text', 'completionscore', '', ['size' => 3]);
         $mform->setType('completionscore', PARAM_INT);
-        $mform->addGroup(
-            $group,
-            'completionscoregroup',
-            get_string('completionscoregroup', 'quizgame'),
-            [' '],
-            false
-        );
+        $mform->addGroup($group, 'completionscoregroup',
+                get_string('completionscoregroup', 'quizgame'), [' '], false);
         $mform->disabledIf('completionscore', 'completionscoreenabled', 'notchecked');
         $mform->addHelpButton('completionscoregroup', 'completionscoregroup', 'quizgame');
         return ['completionscoregroup'];
