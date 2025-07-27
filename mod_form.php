@@ -88,8 +88,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $categorytree[$category->parent][] = $category;
         }
         
-        // Second pass: build hierarchical display
-        $this->build_category_options($categorytree, $options, 0, $context);
+        // Second pass: build hierarchical display, starting from the children of the 'top' categories
+        // to prevent the 'top' categories from appearing in the dropdown.
+        if (isset($categorytree[0])) {
+            foreach ($categorytree[0] as $topcategory) {
+                // We are not displaying the top category itself, but its children.
+                $this->build_category_options($categorytree, $options, $topcategory->id, $context, 0);
+            }
+        }
         
         $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
