@@ -73,7 +73,7 @@ function quizgame_add_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mform
 
     $quizgame->timecreated = time();
 
-    // TODO: Highscores.
+    // TODO MDL-76121: Implement highscores functionality.
 
     return $DB->insert_record('quizgame', $quizgame);
 }
@@ -283,8 +283,8 @@ function quizgame_print_recent_mod_activity($activity, $courseid, $detail, $modn
  * as sending out mail, toggling flags etc ...
  *
  * @return boolean
- * @todo Finish documenting this function
- **/
+ * TODO MDL-76122: Complete implementation and documentation of the cron function.
+ */
 function quizgame_cron () {
     return true;
 }
@@ -507,7 +507,7 @@ function quizgame_reset_userdata($data) {
  * @param string $type (Optional)
  */
 function quizgame_reset_gradebook($courseid, $type='') {
-    // TODO: LOOK AT AFTER GRADES ARE IMPLEMENTED!
+    // TODO MDL-76123: Review and update after grade implementation.
     global $DB;
 
     $sql = "SELECT g.*, cm.idnumber as cmidnumber, g.course as courseid

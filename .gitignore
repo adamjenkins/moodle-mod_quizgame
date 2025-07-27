@@ -1,0 +1,25 @@
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Composer dependencies
+/vendor/
+/ci/
+
+# Node.js dependencies
+/node_modules/
+
+# Build artifacts
+*.min.js
+*.min.css
+*.map
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Moodle development files
+/moodle/

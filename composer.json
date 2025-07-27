@@ -6,5 +6,10 @@
     },
     "extra": {
         "installer-name": "quizgame"
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true
+        }
     }
 }
