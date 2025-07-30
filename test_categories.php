@@ -22,7 +22,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || require_once('config.php');
+require_once(__DIR__ . '/../../config.php');
+require_once($CFG->libdir . '/questionlib.php');
 
 // Simulate course context.
 $courseid = 2; // Assuming course ID 2 is the Wingfoiling course.
@@ -37,9 +38,9 @@ $categories = $DB->get_records_sql(
        FROM {question_categories} c
        JOIN {context} ctx ON c.contextid = ctx.id
       WHERE ctx.contextlevel IN (" . CONTEXT_SYSTEM . ", " . CONTEXT_COURSECAT . ", " . CONTEXT_COURSE . ")
-        AND (ctx.contextlevel = " . CONTEXT_SYSTEM . " 
-             OR ctx.path LIKE :coursepath 
-             OR ctx.path LIKE :categorypath)
+        AND (ctx.contextlevel = " . CONTEXT_SYSTEM .
+             " OR ctx.path LIKE :coursepath" .
+             " OR ctx.path LIKE :categorypath)
    ORDER BY c.parent, c.sortorder, c.name ASC",
     [
         'coursepath' => $context->path . '/%',
