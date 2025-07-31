@@ -25,6 +25,8 @@
 require_once(__DIR__ . '/../../config.php');
 require_once($CFG->libdir . '/questionlib.php');
 
+require_login();
+
 // Simulate course context.
 $courseid = 2; // Assuming course ID 2 is the Wingfoiling course.
 $context = context_course::instance($courseid);
@@ -32,7 +34,7 @@ $context = context_course::instance($courseid);
 echo "Testing question category query for course ID: $courseid\n";
 echo "Context ID: " . $context->id . "\n\n";
 
-// Test our query.
+// Test our query to fetch categories.
 $categories = $DB->get_records_sql(
     "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
        FROM {question_categories} c

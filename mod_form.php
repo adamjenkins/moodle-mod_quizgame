@@ -12,7 +12,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/copyleft/gpl.html>.
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * The main quizgame configuration form
@@ -66,10 +66,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $this->add_intro_editor();
         }
 
-        // Get question categories for this course with proper hierarchy
+        // Get question categories for this course with proper hierarchy.
         $context = context_course::instance($COURSE->id);
-        
-        // Get all question categories available to this course, including module-level (contextlevel 70)
+
+        // Get all question categories available to this course, including module-level (contextlevel 70).
         $categories = $DB->get_records_sql(
             "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
                FROM {question_categories} c
