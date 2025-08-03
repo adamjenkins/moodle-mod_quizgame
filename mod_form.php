@@ -78,16 +78,16 @@ class mod_quizgame_mod_form extends moodleform_mod {
            ORDER BY c.parent, c.sortorder, c.name ASC",
             []
         );
-        
-        // Build hierarchical options array
+
+        // Build hierarchical options array.
         $options = ['' => get_string('choosedots')];
         $categorytree = [];
-        
-        // First pass: organize categories by parent
+
+        // First pass: organize categories by parent.
         foreach ($categories as $category) {
             $categorytree[$category->parent][] = $category;
         }
-        
+
         // Second pass: build hierarchical display, starting from the children of the 'top' categories
         // to prevent the 'top' categories from appearing in the dropdown.
         if (isset($categorytree[0])) {
@@ -96,7 +96,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
                 $this->build_category_options($categorytree, $options, $topcategory->id, $context, 0);
             }
         }
-        
+
         $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
         $mform->addRule('questioncategory', null, 'required', null, 'client');
@@ -119,13 +119,13 @@ class mod_quizgame_mod_form extends moodleform_mod {
         if (!isset($categorytree[$parentid])) {
             return;
         }
-        
+
         foreach ($categorytree[$parentid] as $category) {
             $indent = str_repeat('&nbsp;&nbsp;&nbsp;&nbsp;', $level);
             $name = format_string($category->name, true, ['context' => $context]);
             $options[$category->id] = $indent . $name;
-            
-            // Recursively add child categories
+
+            // Recursively add child categories.
             $this->build_category_options($categorytree, $options, $category->id, $context, $level + 1);
         }
     }
