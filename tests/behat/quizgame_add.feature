@@ -23,7 +23,7 @@ Feature: Teachers can create a quizgame activity for students to review content
       | Test questions   | truefalse   | TF1   | First question  |
       | Test questions   | truefalse   | TF2   | Second question |
 
-  @javascript
+  @javascript @editor_atto
   Scenario: Create the activity.
     Given I log in as "teacher1"
     And I add a quizgame activity to course "Course 1" section "1" and I fill the form with:
