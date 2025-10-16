@@ -48,10 +48,14 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         $this->setAdminUser();
         // Create the activity.
         $course = $this->getDataGenerator()->create_course();
-        $quizgame = $this->getDataGenerator()->create_module('quizgame', ['course' => $course->id]);
+        $quizgame = $this->getDataGenerator()->create_module(
+            'quizgame',
+            ['course' => $course->id]
+        );
         // Create a calendar event.
         $event = $this->create_action_event(
-            $course->id, $quizgame->id,
+            $course->id,
+            $quizgame->id,
             \core_completion\api::COMPLETION_EVENT_TYPE_DATE_COMPLETION_EXPECTED
         );
         // Create an action factory.
@@ -78,7 +82,8 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         $quizgame = $this->getDataGenerator()->create_module('quizgame', ['course' => $course->id]);
         // Create a calendar event.
         $event = $this->create_action_event(
-            $course->id, $quizgame->id,
+            $course->id,
+            $quizgame->id,
             \core_completion\api::COMPLETION_EVENT_TYPE_DATE_COMPLETION_EXPECTED
         );
         // Now, log out.
@@ -134,14 +139,18 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         // Create the activity.
         $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
         $quizgame = $this->getDataGenerator()->create_module(
-            'quizgame', ['course' => $course->id],
-            ['completion' => 2, 'completionview' => 1, 'completionexpected' => time() + DAYSECS]
+            'quizgame',
+            ['course' => $course->id],
+            ['completion' => 2,
+             'completionview' => 1,
+             'completionexpected' => time() + DAYSECS]
         );
         // Get some additional data.
         $cm = get_coursemodule_from_instance('quizgame', $quizgame->id);
         // Create a calendar event.
         $event = $this->create_action_event(
-            $course->id, $quizgame->id,
+            $course->id,
+            $quizgame->id,
             \core_completion\api::COMPLETION_EVENT_TYPE_DATE_COMPLETION_EXPECTED
         );
         // Mark the activity as completed.
