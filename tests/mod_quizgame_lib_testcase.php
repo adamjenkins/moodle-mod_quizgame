@@ -38,8 +38,6 @@ require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_lib_testcase extends \advanced_testcase {
-
-
     /**
      * Test calendar event creation.
      */
@@ -110,7 +108,8 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
         // Create a calendar event.
         $event = $this->create_action_event(
-            $course->id, $quizgame->id,
+            $course->id,
+            $quizgame->id,
             \core_completion\api::COMPLETION_EVENT_TYPE_DATE_COMPLETION_EXPECTED
         );
         // Now log out.
@@ -175,7 +174,8 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         // Create the activity.
         $course = $this->getDataGenerator()->create_course(['enablecompletion' => 1]);
         $quizgame = $this->getDataGenerator()->create_module(
-            'quizgame', ['course' => $course->id],
+            'quizgame',
+            ['course' => $course->id],
             ['completion' => 2, 'completionview' => 1, 'completionexpected' => time() + DAYSECS]
         );
         // Create 2 students and enrol them into the course.
@@ -185,7 +185,8 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
         $cm = get_coursemodule_from_instance('quizgame', $quizgame->id);
         // Create a calendar event.
         $event = $this->create_action_event(
-            $course->id, $quizgame->id,
+            $course->id,
+            $quizgame->id,
             \core_completion\api::COMPLETION_EVENT_TYPE_DATE_COMPLETION_EXPECTED
         );
         // Mark the activity as completed for the $student1.

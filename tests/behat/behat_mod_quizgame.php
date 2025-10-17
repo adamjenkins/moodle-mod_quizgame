@@ -27,8 +27,8 @@
 
 require_once(__DIR__ . '/../../../../lib/behat/behat_base.php');
 
-use Behat\Gherkin\Node\TableNode as TableNode;
-use Behat\Mink\Exception\ExpectationException as ExpectationException;
+use Behat\Gherkin\Node\TableNode;
+use Behat\Mink\Exception\ExpectationException;
 
 /**
  * Steps definitions related to mod_quizgame.
@@ -69,7 +69,7 @@ class behat_mod_quizgame extends behat_base {
             if (class_exists('grade_item')) {
                 // Create a minimal grade_item record if none exist for this course.
                 $courseid = $quizgame->course;
-                $existing = grade_item::fetch_all(array('courseid' => $courseid));
+                $existing = grade_item::fetch_all(['courseid' => $courseid]);
                 if (empty($existing)) {
                     $gi = new stdClass();
                     $gi->courseid = $courseid;
@@ -97,6 +97,9 @@ class behat_mod_quizgame extends behat_base {
             }
         } catch (Exception $e) {
             // Don't fail tests just because creating a helper grade item is not supported in this CI env.
+            // This is expected in some CI environments where grade items cannot be created.
+            // Log the exception for debugging purposes.
+            debugging('Grade item creation failed: ' . $e->getMessage(), DEBUG_DEVELOPER);
         }
         $this->set_user();
     }

@@ -27,8 +27,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot.'/course/moodleform_mod.php');
-require_once($CFG->dirroot.'/lib/questionlib.php');
+require_once($CFG->dirroot . '/course/moodleform_mod.php');
+require_once($CFG->dirroot . '/lib/questionlib.php');
 
 /**
  * Module instance settings form
@@ -36,7 +36,6 @@ require_once($CFG->dirroot.'/lib/questionlib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_mod_form extends moodleform_mod {
-
     /**
      * Defines forms elements
      */
@@ -137,12 +136,21 @@ class mod_quizgame_mod_form extends moodleform_mod {
     public function add_completion_rules() {
         $mform =& $this->_form;
         $group = [];
-        $group[] =& $mform->createElement('checkbox', 'completionscoreenabled', '',
-                get_string('completionscore', 'quizgame'));
+        $group[] =& $mform->createElement(
+            'checkbox',
+            'completionscoreenabled',
+            '',
+            get_string('completionscore', 'quizgame')
+        );
         $group[] =& $mform->createElement('text', 'completionscore', '', ['size' => 3]);
         $mform->setType('completionscore', PARAM_INT);
-        $mform->addGroup($group, 'completionscoregroup',
-                get_string('completionscoregroup', 'quizgame'), [' '], false);
+        $mform->addGroup(
+            $group,
+            'completionscoregroup',
+            get_string('completionscoregroup', 'quizgame'),
+            [' '],
+            false
+        );
         $mform->disabledIf('completionscore', 'completionscoreenabled', 'notchecked');
         $mform->addHelpButton('completionscoregroup', 'completionscoregroup', 'quizgame');
         return ['completionscoregroup'];
