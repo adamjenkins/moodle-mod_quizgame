@@ -510,7 +510,7 @@ function quizgame_reset_userdata($data) {
  * @param string $type (Optional)
  */
 function quizgame_reset_gradebook($courseid, $type = '') {
-    // TODO: Review and update after grade implementation.
+    // TODO #12: Review and update after grade implementation.
     global $DB;
 
     $sql = "SELECT g.*, cm.idnumber as cmidnumber, g.course as courseid
