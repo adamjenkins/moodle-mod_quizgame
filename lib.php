@@ -73,7 +73,7 @@ function quizgame_add_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mform
 
     $quizgame->timecreated = time();
 
-    // TODO MDL-76121: Implement highscores functionality.
+    // TODO #14: Implement highscores functionality.
 
     return $DB->insert_record('quizgame', $quizgame);
 }
