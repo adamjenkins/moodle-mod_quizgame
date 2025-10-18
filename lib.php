@@ -289,7 +289,6 @@ function quizgame_print_recent_mod_activity($activity, $courseid, $detail, $modn
  * as sending out mail, toggling flags etc ...
  *
  * @return boolean
- * TODO MDL-76122: Complete implementation and documentation of the cron function.
  */
 function quizgame_cron() {
     return true;
