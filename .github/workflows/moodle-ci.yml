@@ -10,15 +10,15 @@ jobs:
       postgres:
         image: postgres:13
         env:
-          POSTGRES_USER: 'postgres'
-          POSTGRES_HOST_AUTH_METHOD: 'trust'
+          POSTGRES_USER: "postgres"
+          POSTGRES_HOST_AUTH_METHOD: "trust"
         ports:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
       mariadb:
         image: mariadb:10.6
         env:
-          MYSQL_USER: 'root'
+          MYSQL_USER: "root"
           MYSQL_ALLOW_EMPTY_PASSWORD: "true"
         ports:
           - 3306:3306
@@ -28,6 +28,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - php: 8.3
+            moodle-branch: MOODLE_500_STABLE
+            database: pgsql
+            plugin-ci: 4
           - php: 8.3
             moodle-branch: MOODLE_405_STABLE
             database: pgsql
