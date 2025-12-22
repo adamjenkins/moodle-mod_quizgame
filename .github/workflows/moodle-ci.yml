@@ -31,7 +31,7 @@ jobs:
           - php: 8.3
             moodle-branch: MOODLE_500_STABLE
             database: pgsql
-            plugin-ci: 4
+            plugin-ci: 5
           - php: 8.3
             moodle-branch: MOODLE_405_STABLE
             database: pgsql
