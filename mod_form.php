@@ -79,7 +79,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
         if ($CFG->branch >= 500 && class_exists('qbank_managecategories\helper')) {
             // Use the new Moodle 5.0+ question bank API.
             // This properly scopes categories to the provided contexts.
-            $categoryoptions = \qbank_managecategories\helper::question_category_options($contexts, false, 0);
+            $contextids = array_map(static function($ctx) {
+                return $ctx->id;
+            }, $contexts);
+            $categoryoptions = \qbank_managecategories\helper::question_category_options($contextids, false, 0);
             if (!empty($categoryoptions)) {
                 // The helper returns options in the format we need, but we need to merge with our empty option.
                 $options = array_merge($options, $categoryoptions);
