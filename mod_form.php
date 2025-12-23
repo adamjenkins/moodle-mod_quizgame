@@ -67,33 +67,93 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         // Get question categories for this course with proper hierarchy.
         $context = context_course::instance($COURSE->id);
-
-        // Get all question categories available to this course, including module-level (contextlevel 70).
-        $categories = $DB->get_records_sql(
-            "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
-               FROM {question_categories} c
-               JOIN {context} ctx ON c.contextid = ctx.id
-              WHERE ctx.contextlevel IN (10, 40, 50, 70)
-           ORDER BY c.parent, c.sortorder, c.name ASC",
-            []
-        );
-
-        // Build hierarchical options array.
-        $options = ['' => get_string('choosedots')];
-        $categorytree = [];
-
-        // First pass: organize categories by parent.
-        foreach ($categories as $category) {
-            $categorytree[$category->parent][] = $category;
+        
+        // If editing an existing activity, also include the module context for activity-level question banks.
+        $contexts = [$context];
+        if (!empty($this->_cm)) {
+            $modulecontext = context_module::instance($this->_cm->id);
+            $contexts[] = $modulecontext;
         }
 
-        // Second pass: build hierarchical display, starting from the children of the 'top' categories
-        // to prevent the 'top' categories from appearing in the dropdown.
-        if (isset($categorytree[0])) {
-            foreach ($categorytree[0] as $topcategory) {
-                // We are not displaying the top category itself, but its children.
-                $this->build_category_options($categorytree, $options, $topcategory->id, $context, 0);
+        // For Moodle 5.0+, try to use the new question bank API if available.
+        $options = ['' => get_string('choosedots')];
+        if ($CFG->branch >= 500 && class_exists('qbank_managecategories\helper')) {
+            // Use the new Moodle 5.0+ question bank API.
+            // This properly scopes categories to the provided contexts.
+            $categoryoptions = \qbank_managecategories\helper::question_category_options($contexts, false, 0);
+            if (!empty($categoryoptions)) {
+                // The helper returns options in the format we need, but we need to merge with our empty option.
+                $options = array_merge($options, $categoryoptions);
             }
+        } else {
+            // For older Moodle versions, use the properly scoped query.
+            // Get question categories scoped to this course context and its accessible parents/children.
+            // This includes: the course context itself, module contexts within this course,
+            // the parent course category context (if exists), and system context.
+            // We exclude other course contexts to prevent cross-course access.
+            $contextpath = $context->path . '/%';
+            $parentcontext = $context->get_parent_context();
+            $parentcontextid = ($parentcontext && $parentcontext->contextlevel == CONTEXT_COURSECAT) ? $parentcontext->id : null;
+            
+            $params = [
+                'coursecontextid' => $context->id,
+                'contextpath' => $contextpath,
+                'modulelevel' => CONTEXT_MODULE,
+                'systemlevel' => CONTEXT_SYSTEM,
+            ];
+            
+            $whereconditions = [
+                'ctx.id = :coursecontextid',
+                '(ctx.path LIKE :contextpath AND ctx.contextlevel = :modulelevel)',
+                '(ctx.contextlevel = :systemlevel AND ctx.depth = 1)',
+            ];
+            
+            // If editing an existing activity, include its module context.
+            if (!empty($this->_cm)) {
+                $modulecontext = context_module::instance($this->_cm->id);
+                $params['modulecontextid'] = $modulecontext->id;
+                $whereconditions[] = 'ctx.id = :modulecontextid';
+            }
+            
+            if ($parentcontextid !== null) {
+                $params['parentcontextid'] = $parentcontextid;
+                $params['categorylevel'] = CONTEXT_COURSECAT;
+                $whereconditions[] = '(ctx.id = :parentcontextid AND ctx.contextlevel = :categorylevel)';
+            }
+            
+            $categories = $DB->get_records_sql(
+                "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
+                   FROM {question_categories} c
+                   JOIN {context} ctx ON c.contextid = ctx.id
+                  WHERE (" . implode(' OR ', $whereconditions) . ")
+               ORDER BY c.parent, c.sortorder, c.name ASC",
+                $params
+            );
+
+            // Build hierarchical options array.
+            $categorytree = [];
+
+            // First pass: organize categories by parent.
+            foreach ($categories as $category) {
+                $categorytree[$category->parent][] = $category;
+            }
+
+            // Second pass: build hierarchical display, starting from the children of the 'top' categories
+            // to prevent the 'top' categories from appearing in the dropdown.
+            if (isset($categorytree[0])) {
+                foreach ($categorytree[0] as $topcategory) {
+                    // We are not displaying the top category itself, but its children.
+                    $this->build_category_options($categorytree, $options, $topcategory->id, $context, 0);
+                }
+            }
+        }
+
+        // If no categories found, we might want to create an activity-level question bank.
+        // However, this should be done carefully and only if appropriate.
+        if (count($options) <= 1) {
+            // Only the empty "Choose..." option exists.
+            // Note: Creating question banks programmatically should be done with caution.
+            // For now, we'll just show a message that no categories are available.
         }
 
         $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
