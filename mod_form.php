@@ -67,7 +67,6 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         // Get question categories for this course with proper hierarchy.
         $context = context_course::instance($COURSE->id);
-        
         // If editing an existing activity, also include the module context for activity-level question banks.
         $contexts = [$context];
         if (!empty($this->_cm)) {
@@ -94,33 +93,33 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $contextpath = $context->path . '/%';
             $parentcontext = $context->get_parent_context();
             $parentcontextid = ($parentcontext && $parentcontext->contextlevel == CONTEXT_COURSECAT) ? $parentcontext->id : null;
-            
+
             $params = [
                 'coursecontextid' => $context->id,
                 'contextpath' => $contextpath,
                 'modulelevel' => CONTEXT_MODULE,
                 'systemlevel' => CONTEXT_SYSTEM,
             ];
-            
+
             $whereconditions = [
                 'ctx.id = :coursecontextid',
                 '(ctx.path LIKE :contextpath AND ctx.contextlevel = :modulelevel)',
                 '(ctx.contextlevel = :systemlevel AND ctx.depth = 1)',
             ];
-            
+
             // If editing an existing activity, include its module context.
             if (!empty($this->_cm)) {
                 $modulecontext = context_module::instance($this->_cm->id);
                 $params['modulecontextid'] = $modulecontext->id;
                 $whereconditions[] = 'ctx.id = :modulecontextid';
             }
-            
+
             if ($parentcontextid !== null) {
                 $params['parentcontextid'] = $parentcontextid;
                 $params['categorylevel'] = CONTEXT_COURSECAT;
                 $whereconditions[] = '(ctx.id = :parentcontextid AND ctx.contextlevel = :categorylevel)';
             }
-            
+
             $categories = $DB->get_records_sql(
                 "SELECT DISTINCT c.id, c.name, c.parent, c.sortorder, c.contextid
                    FROM {question_categories} c
@@ -148,13 +147,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
             }
         }
 
-        // If no categories found, we might want to create an activity-level question bank.
-        // However, this should be done carefully and only if appropriate.
-        if (count($options) <= 1) {
-            // Only the empty "Choose..." option exists.
-            // Note: Creating question banks programmatically should be done with caution.
-            // For now, we'll just show a message that no categories are available.
-        }
+        // If no categories found, keep the empty "Choose..." option; admins can create categories later.
 
         $mform->addElement('select', 'questioncategory', get_string('questioncategory', 'quizgame'), $options);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
