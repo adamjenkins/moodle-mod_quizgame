@@ -1,6 +1,7 @@
 # IDE and editor files
 .idea/
 .vscode/
+
 *.swp
 *.swo
 *~
@@ -23,3 +24,15 @@ Thumbs.db
 
 # Moodle development files
 /moodle/
+/moodledata/
+
+# Logs and debug files
+*.log
+behat_*.txt
+behat_debug*.txt
+
+# Local configuration and temporary files
+.php-ci.ini
+.phpcs-ini
+phpcs.xml
+setup-behat.md
