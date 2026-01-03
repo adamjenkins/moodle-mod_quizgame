@@ -35,11 +35,13 @@ require_once($CFG->dirroot . '/lib/questionlib.php');
  * @copyright  2014 John Okely <john@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_mod_form extends moodleform_mod {
+class mod_quizgame_mod_form extends moodleform_mod
+{
     /**
      * Defines forms elements
      */
-    public function definition() {
+    public function definition()
+    {
         global $CFG, $COURSE, $DB;
 
         $mform = $this->_form;
@@ -66,26 +68,36 @@ class mod_quizgame_mod_form extends moodleform_mod {
         }
 
         // Get question categories for this course with proper hierarchy.
-        $context = context_course::instance($COURSE->id);
-        // If editing an existing activity, also include the module context for activity-level question banks.
-        $contexts = [$context];
         if (!empty($this->_cm)) {
-            $modulecontext = context_module::instance($this->_cm->id);
-            $contexts[] = $modulecontext;
+            $context = context_module::instance($this->_cm->id);
+        } else {
+            $context = context_course::instance($COURSE->id);
         }
+        $editcontexts = new \core_question\local\bank\question_edit_contexts($context);
+        $contexts = $editcontexts->all();
 
         // For Moodle 5.0+, try to use the new question bank API if available.
         $options = ['' => get_string('choosedots')];
         if ($CFG->branch >= 500 && class_exists('qbank_managecategories\helper')) {
             // Use the new Moodle 5.0+ question bank API.
             // This properly scopes categories to the provided contexts.
-            $contextids = array_map(static function ($ctx) {
-                return $ctx->id;
-            }, $contexts);
-            $categoryoptions = \qbank_managecategories\helper::question_category_options($contextids, false, 0);
+            if (class_exists('core_question\local\bank\question_bank_helper')) {
+                $sharedbanks = \core_question\local\bank\question_bank_helper::get_activity_instances_with_shareable_questions([$COURSE->id]);
+                foreach ($sharedbanks as $bank) {
+                    $contexts[] = \context_module::instance($bank->modid);
+                }
+            }
+            $categoryoptions = \qbank_managecategories\helper::question_category_options($contexts, false, 0);
             if (!empty($categoryoptions)) {
-                // The helper returns options in the format we need, but we need to merge with our empty option.
-                $options = array_merge($options, $categoryoptions);
+                foreach ($categoryoptions as $contextname => $opts) {
+                    if (is_array($opts)) {
+                        foreach ($opts as $id => $name) {
+                            $options[$id] = $name;
+                        }
+                    } else {
+                        $options[$contextname] = $opts;
+                    }
+                }
             }
         } else {
             // For older Moodle versions, use the properly scoped query.
@@ -170,7 +182,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * @param context $context Course context
      * @param int $level Current indentation level
      */
-    private function build_category_options($categorytree, &$options, $parentid, $context, $level = 0) {
+    private function build_category_options($categorytree, &$options, $parentid, $context, $level = 0)
+    {
         if (!isset($categorytree[$parentid])) {
             return;
         }
@@ -189,7 +202,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * Define custom completion rules
      * @return array
      */
-    public function add_completion_rules() {
+    public function add_completion_rules()
+    {
         $mform =& $this->_form;
         $group = [];
         $group[] =& $mform->createElement(
@@ -217,7 +231,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * @param array $data
      * @return bool
      */
-    public function completion_rule_enabled($data) {
+    public function completion_rule_enabled($data)
+    {
         return (!empty($data['completionscoreenabled']) && $data['completionscore'] != 0);
     }
 
@@ -225,7 +240,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * Loads custom completion data.
      * @return boolean
      */
-    public function get_data() {
+    public function get_data()
+    {
         $data = parent::get_data();
         if (!$data) {
             return false;
@@ -244,7 +260,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * Used to pre-populate mform.
      * @param array $defaultvalues
      */
-    public function data_preprocessing(&$defaultvalues) {
+    public function data_preprocessing(&$defaultvalues)
+    {
         parent::data_preprocessing($defaultvalues);
 
         // Set up the completion checkboxes which aren't part of standard data.
