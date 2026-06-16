@@ -92,3 +92,9 @@ $string['scoreslink'] = 'View all attempts';
 $string['scoreslinkhelp'] = 'View all player attempts and scores';
 $string['spacetostart'] = 'Press space or click to start';
 $string['sound'] = 'Sound';
+$string['gradepassingscore'] = 'Game score for maximum grade';
+$string['gradepassingscore_help'] = 'The game score a student must reach to earn the full maximum grade in the gradebook.
+
+For example, if the maximum grade is 100 and you set this to 10000, a student who scores 5000 in the game will receive 50/100. A student who scores 10000 or more will receive 100/100.
+
+Set to 0 to store the raw game score as the gradebook grade (Moodle will still cap it at the maximum grade).';

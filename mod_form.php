@@ -27,8 +27,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot.'/course/moodleform_mod.php');
-require_once($CFG->dirroot.'/lib/questionlib.php');
+require_once($CFG->dirroot . '/course/moodleform_mod.php');
+require_once($CFG->dirroot . '/lib/questionlib.php');
 
 /**
  * Module instance settings form
@@ -36,12 +36,11 @@ require_once($CFG->dirroot.'/lib/questionlib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_mod_form extends moodleform_mod {
-
     /**
      * Defines forms elements
      */
     public function definition() {
-        global $CFG, $COURSE;
+        global $CFG, $COURSE, $DB;
 
         $mform = $this->_form;
 
@@ -66,11 +65,34 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $this->add_intro_editor();
         }
 
-        $context = context_course::instance($COURSE->id);
-        $categories = qbank_managecategories\helper::question_category_options([$context], false, 0);
+        // Moodle 5.x question_category_options only accepts CONTEXT_MODULE contexts.
+        // Collect all module-level contexts within this course that contain question categories.
+        $contextids = $DB->get_fieldset_sql(
+            "SELECT DISTINCT qc.contextid
+               FROM {question_categories} qc
+               JOIN {context} ctx ON ctx.id = qc.contextid AND ctx.contextlevel = :ctxlevel
+               JOIN {course_modules} cm ON cm.id = ctx.instanceid AND cm.course = :courseid",
+            ['ctxlevel' => CONTEXT_MODULE, 'courseid' => $COURSE->id]
+        );
+        if ($contextids) {
+            $contexts = array_map(fn($id) => context::instance_by_id($id), $contextids);
+            $categories = qbank_managecategories\helper::question_category_options($contexts, false, 0);
+        } else {
+            $categories = [];
+        }
 
         $mform->addElement('selectgroups', 'questioncategory', get_string('questioncategory', 'quizgame'), $categories);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
+
+        // Grade settings: type/max, category, grade-to-pass (standard Moodle grade elements).
+        $this->standard_grading_coursemodule_elements();
+
+        // Target game score: the game score that earns the maximum grade.
+        $mform->addElement('text', 'gradepassingscore', get_string('gradepassingscore', 'quizgame'), ['size' => '8']);
+        $mform->setType('gradepassingscore', PARAM_INT);
+        $mform->setDefault('gradepassingscore', 0);
+        $mform->addHelpButton('gradepassingscore', 'gradepassingscore', 'quizgame');
+        $mform->hideIf('gradepassingscore', 'grade[modgrade_type]', 'eq', 'none');
 
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
@@ -85,12 +107,21 @@ class mod_quizgame_mod_form extends moodleform_mod {
     public function add_completion_rules() {
         $mform =& $this->_form;
         $group = [];
-        $group[] =& $mform->createElement('checkbox', 'completionscoreenabled', '',
-                get_string('completionscore', 'quizgame'));
+        $group[] =& $mform->createElement(
+            'checkbox',
+            'completionscoreenabled',
+            '',
+            get_string('completionscore', 'quizgame')
+        );
         $group[] =& $mform->createElement('text', 'completionscore', '', ['size' => 3]);
         $mform->setType('completionscore', PARAM_INT);
-        $mform->addGroup($group, 'completionscoregroup',
-                get_string('completionscoregroup', 'quizgame'), [' '], false);
+        $mform->addGroup(
+            $group,
+            'completionscoregroup',
+            get_string('completionscoregroup', 'quizgame'),
+            [' '],
+            false
+        );
         $mform->disabledIf('completionscore', 'completionscoreenabled', 'notchecked');
         $mform->addHelpButton('completionscoregroup', 'completionscoregroup', 'quizgame');
         return ['completionscoregroup'];
@@ -132,8 +163,6 @@ class mod_quizgame_mod_form extends moodleform_mod {
         parent::data_preprocessing($defaultvalues);
 
         // Set up the completion checkboxes which aren't part of standard data.
-        // We also make the default value (if you turn on the checkbox) for those
-        // numbers to be 1, this will not apply unless checkbox is ticked.
         if (!empty($defaultvalues['completionscore'])) {
             $defaultvalues['completionscoreenabled'] = 1;
         } else {
@@ -141,6 +170,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
         }
         if (empty($defaultvalues['completionscore'])) {
             $defaultvalues['completionscore'] = 10000;
+        }
+
+        if (!isset($defaultvalues['gradepassingscore'])) {
+            $defaultvalues['gradepassingscore'] = 0;
         }
     }
 }

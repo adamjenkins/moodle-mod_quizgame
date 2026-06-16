@@ -28,7 +28,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/questionlib.php');
-require_once($CFG->dirroot.'/lib/completionlib.php');
+require_once($CFG->dirroot . '/lib/completionlib.php');
 
 /**
  * Function to prepare strings to be printed out as JSON.
@@ -38,9 +38,7 @@ require_once($CFG->dirroot.'/lib/completionlib.php');
  */
 function quizgame_cleanup($string) {
     $string = strip_tags($string);
-    $string = preg_replace('/"/', '\"', $string);
     $string = preg_replace('/[\n\r]/', ' ', $string);
-    $string = stripslashes($string);
     return $string;
 }
 /**
@@ -81,6 +79,9 @@ function quizgame_add_highscore($quizgame, $score) {
     if ($completion->is_enabled($cm) == COMPLETION_TRACKING_AUTOMATIC && $quizgame->completionscore) {
         $completion->update_state($cm, COMPLETION_COMPLETE, $record->userid);
     }
+
+    // Push the new high score to the gradebook.
+    quizgame_update_grades($quizgame, $USER->id);
 
     return $record->id;
 }

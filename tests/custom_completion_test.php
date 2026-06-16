@@ -46,7 +46,6 @@ require_once($CFG->libdir . '/completionlib.php');
  * @covers    \mod_quizgame\completion\custom_completion
  */
 final class custom_completion_test extends advanced_testcase {
-
     /**
      * Data provider for get_state().
      *
@@ -100,12 +99,11 @@ final class custom_completion_test extends advanced_testcase {
             ->getMock();
 
         // Mock the return of the magic getter method when fetching the cm_info object's customdata and instance values.
-        $mockcminfo->expects($this->any())
-            ->method('__get')
-            ->will($this->returnValueMap([
+        $mockcminfo->method('__get')
+            ->willReturnMap([
                 ['customdata', $customdataval],
                 ['instance', 1],
-            ]));
+            ]);
 
         // Mock the DB calls.
         $DB = $this->createMock(get_class($DB));

@@ -1,25 +1,95 @@
 Quizventure
 ===========
 
-Students procastinating too much? Are they playing games instead of studying? Well now you can motivate them by allowing them to do both at once!
+Students procrastinating too much? Are they playing games instead of studying? Well now you can motivate them by allowing them to do both at once!
 
-Quizventure is an activity module that loads quiz questions from the course it's added to.
-The possible answers come down as space ships and you have to shoot the correct one.
+Quizventure is an activity module that loads quiz questions from the course question bank.
+The possible answers come down as spaceships and you have to shoot the correct one.
 
-Module Installation
-===================
+Supported question types: **multiple choice**, **true/false**, and **matching**.
+Other question types are silently skipped.
 
-To install, go to the [Quizventure page](https://moodle.org/plugins/view.php?plugin=mod_quizgame) on the plugins DB.
+Requirements
+============
 
-Alternatively, to install from [github](https://github.com/xow/moodle-mod_quizgame) click "Download ZIP" on the right, then extract the contents into mod/quizgame.
-Login to your moodle site as admin, go to Site Administration -> Notifications and follow the prompts
+- Moodle 4.1 or later (tested through 5.2)
+- PHP 8.1 or later
 
-This version of the plugin works with Moodle 4.0 and later.
+Installation
+============
 
-Details and Setup
-=================
+**From the Moodle plugins directory:**
+Go to the [Quizventure page](https://moodle.org/plugins/view.php?plugin=mod_quizgame) on the plugins DB.
 
-It only supports multiple choice, matching, and true/false questions for now (other questions types will be ignored).
+**From GitHub:**
+Download the ZIP, extract into `mod/quizgame/`, then log in as admin and go to
+*Site Administration → Notifications* to run the database upgrade.
 
-Just copy the questions into the courses default category, and add the game to your course.
+Setup
+=====
 
+1. Add questions to the course question bank (multiple choice, true/false, or matching).
+2. Add a *Quizventure* activity to your course and select the question category to use.
+
+The question category picker shows all question banks accessible within the course,
+including any shared course question bank modules.
+
+Grading
+=======
+
+Quizventure writes scores to the Moodle gradebook. Each correct answer on the first
+attempt is worth 1000 game points.
+
+In the activity settings, under **Grade**, you can configure:
+
+- **Maximum grade** — the gradebook grade ceiling (default: 100).
+- **Grade category** — which gradebook category to place the grade in.
+- **Grade to pass** — the minimum grade required to pass (used for completion and course badges).
+- **Game score for maximum grade** — the game score that earns the full maximum grade.
+  For example, with a maximum grade of 100 and a target of 10 000, a student who scores
+  5 000 game points receives 50/100. Scoring at or above the target awards the maximum grade.
+  Set to 0 to store the raw game score (Moodle's maximum grade cap still applies).
+
+The gradebook is updated immediately each time a student finishes a game, using only
+their personal best score.
+
+Completion
+==========
+
+Quizventure supports automatic completion based on a minimum game score. Enable
+*Require score* in the activity completion settings and enter the target score.
+Each correctly answered question on the first try is worth 1000 points, so a sensible
+target is `(number of questions) × 1000`.
+
+Privacy
+=======
+
+This plugin stores the following personal data:
+
+| Data | Purpose |
+|---|---|
+| User ID | Identifies whose score is recorded |
+| Game score | Tracks performance |
+| Timestamp | Records when the game was played |
+
+All stored data can be exported or deleted via Moodle's Privacy API
+(*Site Administration → Privacy and policies → Data requests*).
+
+Compatibility
+=============
+
+| Moodle | PHP | Status |
+|---|---|---|
+| 5.2 | 8.3 | ✓ tested |
+| 5.1 | 8.2, 8.3 | ✓ CI |
+| 4.4 | 8.1–8.3 | ✓ CI |
+| 4.3 | 8.0–8.2 | ✓ CI |
+| 4.2 | 8.0–8.1 | ✓ CI |
+| 4.1 | 7.4–8.1 | ✓ CI |
+
+CI runs on PostgreSQL and MariaDB for all combinations above.
+
+License
+=======
+
+GNU GPL v3 or later — see [COPYING](COPYING.txt).
