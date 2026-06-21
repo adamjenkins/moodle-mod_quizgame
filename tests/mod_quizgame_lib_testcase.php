@@ -20,6 +20,7 @@
  * @package   mod_quizgame
  * @category  test
  * @copyright 2019 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -35,6 +36,7 @@ require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
  * @package   mod_quizgame
  * @category  test
  * @copyright 2019 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_lib_testcase extends \advanced_testcase {

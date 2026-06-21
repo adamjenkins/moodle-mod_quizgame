@@ -19,6 +19,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -32,6 +33,7 @@ require_once($CFG->libdir . '/tablelib.php');
  *
  * @package    mod_quizgame
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class table_scores extends table_sql {

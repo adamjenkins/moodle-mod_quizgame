@@ -20,6 +20,7 @@
  * @package   mod_quizgame
  * @category  grade
  * @copyright 2014 John Okely <john@moodle.com>
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

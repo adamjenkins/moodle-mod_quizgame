@@ -19,6 +19,7 @@
  *
  * @package   mod_quizgame
  * @copyright 2022 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

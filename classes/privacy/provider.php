@@ -19,6 +19,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -37,6 +38,7 @@ use core_privacy\local\request\writer;
  * Implementation of the privacy subsystem plugin provider for the quizgame activity module.
  *
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class provider implements

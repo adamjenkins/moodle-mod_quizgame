@@ -28,6 +28,7 @@ use core_completion\activity_custom_completion;
  *
  * @package   mod_quizgame
  * @copyright 2021 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class custom_completion extends activity_custom_completion {

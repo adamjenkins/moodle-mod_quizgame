@@ -20,6 +20,7 @@
  * @package mod_quizgame
  * @subpackage backup-moodle2
  * @copyright 2018 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -32,6 +33,7 @@ require_once($CFG->dirroot . '/mod/quizgame/backup/moodle2/restore_quizgame_step
  * @package mod_quizgame
  * @subpackage backup-moodle2
  * @copyright 2018 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class restore_quizgame_activity_task extends restore_activity_task {

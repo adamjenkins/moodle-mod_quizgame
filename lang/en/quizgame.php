@@ -22,6 +22,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2014 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -78,6 +79,8 @@ $string['questioncategory_help'] = 'Select the category from the question bank t
 Note that you should only select questions that are not critical to assessment later on. The quiz game is similar to creating a quiz with infinite attempts and instant feedback on whether you got something right or wrong.
 
 **Note**: Quizventure is designed to promote learning rather than for assessment. Students will have infinite attempts with instant feedback. For this reason, only add questions you want students to learn the answer to, rather than questions you want to assess if they have learned';
+$string['questioncategorysubcats'] = 'Also include questions from subcategories';
+$string['questioncategorysubcats_help'] = 'If enabled, questions from subcategories of the selected question category will also be included in the game.';
 $string['quizgamefieldset'] = 'Custom example fieldset';
 $string['quizgamename_help'] = 'What is the name of this Quizventure?';
 $string['quizgamename'] = 'Quizventure name';

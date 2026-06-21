@@ -26,6 +26,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2014 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -120,6 +121,27 @@ function xmldb_quizgame_upgrade($oldversion) {
         }
 
         upgrade_mod_savepoint(true, 2026061600, 'quizgame');
+    }
+
+    if ($oldversion < 2026062200) {
+        // Add questioncategorysubcats: whether to also include questions from subcategories.
+        $table = new xmldb_table('quizgame');
+        $field = new xmldb_field(
+            'questioncategorysubcats',
+            XMLDB_TYPE_INTEGER,
+            '1',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '0',
+            'questioncategory'
+        );
+
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026062200, 'quizgame');
     }
 
     // Final return of upgrade result (true, all went good) to Moodle.

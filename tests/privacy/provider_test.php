@@ -19,6 +19,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -32,6 +33,7 @@ use mod_quizgame\privacy\provider;
  *
  * @package    mod_quizgame
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \mod_quizgame\privacy\provider
  */

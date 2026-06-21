@@ -5,6 +5,34 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026062200] — 2026-06-22 — v5.0 — Subcategories, CI cleanup, copyright
+
+### Added
+- **Subcategory questions** — new "Also include questions from subcategories"
+  checkbox (`questioncategorysubcats`) on the activity settings form. When
+  enabled, questions are drawn from the selected category and all of its
+  subcategories instead of just the top category.
+- `questioncategorysubcats` database column (upgrade savepoint 2026062200),
+  included in backup/restore.
+- Copyright attribution for Adam Jenkins added to file headers across the
+  codebase (existing copyright lines preserved).
+
+### Changed
+- CI matrix narrowed to Moodle 5.1 and 5.2 only (PHP 8.2–8.3); Moodle 4.0–5.0
+  combinations removed.
+- The two CI workflow files (`moodle-ci.yml`, `moodle5-ci.yml`) were merged
+  into a single `moodle-ci.yml`.
+- Release tagged v5.0.
+
+### Verified
+- Ran moodle-plugin-ci locally (phplint, validate, savepoints, codechecker,
+  phpdoc, mustache, grunt/eslint/stylelint) — all clean.
+- Reviewed all raw SQL in the plugin for injection risk — every query uses
+  parameterised placeholders or `get_in_or_equal()`; no string-concatenated
+  user input found.
+
+---
+
 ## [2026061600] — 2026-06-16 — Moodle 5.x support + gradebook integration
 
 ### Added

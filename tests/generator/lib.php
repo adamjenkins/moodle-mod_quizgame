@@ -20,6 +20,7 @@
  * @package    mod_quizgame
  * @category   test
  * @copyright  2018 Stephen Bourget
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_generator extends testing_module_generator {
@@ -33,6 +34,7 @@ class mod_quizgame_generator extends testing_module_generator {
         // Add default values for quizgame.
         $record = (array)$record + [
             'questioncategory' => 0,
+            'questioncategorysubcats' => 0,
             'grade' => 100,
             'completionscore' => 0,
         ];

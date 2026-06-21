@@ -22,6 +22,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2014 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -33,6 +34,7 @@ require_once($CFG->dirroot . '/lib/questionlib.php');
 /**
  * Module instance settings form
  * @copyright  2014 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_mod_form extends moodleform_mod {
@@ -83,6 +85,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         $mform->addElement('selectgroups', 'questioncategory', get_string('questioncategory', 'quizgame'), $categories);
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
+
+        $mform->addElement(
+            'checkbox',
+            'questioncategorysubcats',
+            '',
+            get_string('questioncategorysubcats', 'quizgame')
+        );
+        $mform->addHelpButton('questioncategorysubcats', 'questioncategorysubcats', 'quizgame');
 
         // Grade settings: type/max, category, grade-to-pass (standard Moodle grade elements).
         $this->standard_grading_coursemodule_elements();

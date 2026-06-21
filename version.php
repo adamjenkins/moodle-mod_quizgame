@@ -22,14 +22,15 @@
  *
  * @package    mod_quizgame
  * @copyright  2014 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026061600;      // If version == 0 then module will not be installed.
+$plugin->version  = 2026062200;      // If version == 0 then module will not be installed.
 $plugin->requires = 2022111800;      // Requires Moodle version 4.0 or later.
 $plugin->cron      = 0;              // Period for cron to check this module in seconds.
 $plugin->component = 'mod_quizgame'; // To check on upgrade, that module sits in correct place.
 $plugin->maturity = MATURITY_STABLE;
-$plugin->release = 'v4.1-r1';
+$plugin->release = 'v5.0';

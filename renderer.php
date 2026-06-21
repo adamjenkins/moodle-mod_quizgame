@@ -19,6 +19,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2016 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -27,6 +28,7 @@
  *
  * @package    mod_quizgame
  * @copyright  2016 John Okely <john@moodle.com>
+ * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_renderer extends plugin_renderer_base {
@@ -39,8 +41,13 @@ class mod_quizgame_renderer extends plugin_renderer_base {
      */
     public function render_game($quizgame, $context) {
 
-        $categoryid = explode(',', $quizgame->questioncategory)[0];
-        $questionids = question_bank::get_finder()->get_questions_from_categories(intval($categoryid), '');
+        $categoryid = intval(explode(',', $quizgame->questioncategory)[0]);
+        if (!empty($quizgame->questioncategorysubcats)) {
+            $categoryids = array_values(question_categorylist($categoryid));
+        } else {
+            $categoryids = [$categoryid];
+        }
+        $questionids = question_bank::get_finder()->get_questions_from_categories($categoryids, '');
         $questions = question_load_questions($questionids);
 
         $this->page->requires->strings_for_js(

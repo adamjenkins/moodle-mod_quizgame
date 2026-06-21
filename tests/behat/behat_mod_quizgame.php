@@ -20,6 +20,7 @@
  * @package   mod_quizgame
  * @category  test
  * @copyright 2019 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -34,6 +35,7 @@ use Behat\Mink\Exception\ExpectationException;
  * Steps definitions related to mod_quizgame.
  *
  * @copyright 2019 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class behat_mod_quizgame extends behat_base {

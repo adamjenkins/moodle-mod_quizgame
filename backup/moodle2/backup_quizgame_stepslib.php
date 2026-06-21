@@ -20,6 +20,7 @@
  * @package mod_quizgame
  * @subpackage backup-moodle2
  * @copyright 2018 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -29,6 +30,7 @@
  * @package mod_quizgame
  * @subpackage backup-moodle2
  * @copyright 2018 Stephen Bourget
+ * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class backup_quizgame_activity_structure_step extends backup_activity_structure_step {
@@ -48,6 +50,7 @@ class backup_quizgame_activity_structure_step extends backup_activity_structure_
             ['course', 'name', 'intro', 'introformat', 'timecreated',
             'timemodified',
             'questioncategory',
+            'questioncategorysubcats',
             'grade',
             'gradepassingscore',
             'completionscore',
