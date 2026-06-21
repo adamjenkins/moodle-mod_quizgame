@@ -12,8 +12,8 @@ Other question types are silently skipped.
 Requirements
 ============
 
-- Moodle 4.1 or later (tested through 5.2)
-- PHP 8.1 or later
+- Moodle 4.1 or later (CI-tested on Moodle 5.1 and 5.2)
+- PHP 8.2 or later
 
 Installation
 ============
@@ -32,7 +32,9 @@ Setup
 2. Add a *Quizventure* activity to your course and select the question category to use.
 
 The question category picker shows all question banks accessible within the course,
-including any shared course question bank modules.
+including any shared course question bank modules. Tick **Also include questions from
+subcategories** to pull questions from the selected category's entire subcategory tree
+instead of just the top category.
 
 Grading
 =======
@@ -80,14 +82,10 @@ Compatibility
 
 | Moodle | PHP | Status |
 |---|---|---|
-| 5.2 | 8.3 | ✓ tested |
+| 5.2 | 8.3 | ✓ CI |
 | 5.1 | 8.2, 8.3 | ✓ CI |
-| 4.4 | 8.1–8.3 | ✓ CI |
-| 4.3 | 8.0–8.2 | ✓ CI |
-| 4.2 | 8.0–8.1 | ✓ CI |
-| 4.1 | 7.4–8.1 | ✓ CI |
 
-CI runs on PostgreSQL and MariaDB for all combinations above.
+CI runs on PostgreSQL and MariaDB for both combinations above.
 
 License
 =======
