@@ -63,7 +63,9 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 - Gradebook: "None" grade type created a value grade item; course reset and "Remove all
   user scores" left grades behind; deleting an activity left its grade item; scales in use
   were reported unused. Scales are now refused by the settings form.
-- Existing installs get their gradebook grades back-filled on upgrade.
+- Existing installs get their gradebook grades back-filled after upgrading, by an ad-hoc
+  task (`\mod_quizgame\task\update_grades`) that runs with the next cron; the gradebook
+  API cannot run during the upgrade itself.
 - "Also include questions from subcategories" could not be turned off once enabled.
 - Restore: links to Quizventure activities were left as `$@QUIZGAMEVIEWBYID*…@$` text;
   legacy id-only categories broke the restore; the restored category kept a temporary

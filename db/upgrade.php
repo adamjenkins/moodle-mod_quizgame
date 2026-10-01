@@ -37,7 +37,7 @@
  * @return bool
  */
 function xmldb_quizgame_upgrade($oldversion) {
-    global $CFG, $DB;
+    global $DB;
 
     $dbman = $DB->get_manager(); // Loads ddl manager and xmldb classes.
 
@@ -146,13 +146,11 @@ function xmldb_quizgame_upgrade($oldversion) {
 
     if ($oldversion < 2026100100) {
         // Gradebook integration (2026061600) only created grade items when a teacher re-saved the
-        // settings. Create them now and push every player's best score.
-        require_once($CFG->dirroot . '/mod/quizgame/lib.php');
-        $quizgames = $DB->get_recordset('quizgame');
-        foreach ($quizgames as $quizgame) {
-            quizgame_update_grades($quizgame);
+        // settings. Create them and push every player's best score from an ad-hoc task: the
+        // gradebook API cannot run during an upgrade (it reaches get_fast_modinfo()).
+        if ($DB->record_exists('quizgame', [])) {
+            \core\task\manager::queue_adhoc_task(new \mod_quizgame\task\update_grades(), true);
         }
-        $quizgames->close();
 
         upgrade_mod_savepoint(true, 2026100100, 'quizgame');
     }
