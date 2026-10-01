@@ -32,15 +32,23 @@ $functions = [
     'mod_quizgame_update_score' => [
         'classname'     => 'mod_quizgame_external',
         'methodname'    => 'update_score',
-        'description'   => 'Record the score and write to the database.',
+        'description'   => 'Finish the game and record the score computed by the server.',
+        'type'          => 'write',
+        'ajax'          => true,
+        'capabilities'  => 'mod/quizgame:play',
+    ],
+    'mod_quizgame_start_game' => [
+        'classname'     => 'mod_quizgame_external',
+        'methodname'    => 'start_game',
+        'description'   => 'Start a game: reset the server-side score and log the start',
         'type'          => 'write',
         'ajax'          => true,
         'capabilities'  => 'mod/quizgame:view',
     ],
-        'mod_quizgame_start_game' => [
+    'mod_quizgame_answer' => [
         'classname'     => 'mod_quizgame_external',
-        'methodname'    => 'start_game',
-        'description'   => 'Log the player starting the game',
+        'methodname'    => 'answer',
+        'description'   => 'Check a shot or the end of a level and update the server-side score',
         'type'          => 'write',
         'ajax'          => true,
         'capabilities'  => 'mod/quizgame:view',

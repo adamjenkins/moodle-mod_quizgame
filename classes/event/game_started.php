@@ -77,4 +77,13 @@ class game_started extends \core\event\base {
     public static function get_objectid_mapping() {
         return ['db' => 'quizgame', 'restore' => 'quizgame'];
     }
+
+    /**
+     * Mapping of the 'other' data for course log restore.
+     *
+     * @return bool false, as 'other' holds no ids to map
+     */
+    public static function get_other_mapping() {
+        return false;
+    }
 }

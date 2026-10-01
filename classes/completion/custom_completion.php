@@ -45,7 +45,7 @@ class custom_completion extends activity_custom_completion {
 
         $quizgameid = $this->cm->instance;
         $userid = $this->userid;
-        $completionscore = $this->cm->customdata['customcompletionrules']['completionscore'];
+        $completionscore = $this->cm->get_custom_data()['customcompletionrules']['completionscore'];
 
         $where = ' quizgameid = :quizgameid AND userid = :userid AND score >= :score';
         $params = [
@@ -53,9 +53,9 @@ class custom_completion extends activity_custom_completion {
             'userid' => $userid,
             'score' => $completionscore,
         ];
-            $highscore = $DB->count_records_select('quizgame_scores', $where, $params) > 0;
+        $hasscore = $DB->count_records_select('quizgame_scores', $where, $params) > 0;
 
-        return ($highscore >= 1) ? COMPLETION_COMPLETE : COMPLETION_INCOMPLETE;
+        return $hasscore ? COMPLETION_COMPLETE : COMPLETION_INCOMPLETE;
     }
 
     /**
@@ -73,7 +73,7 @@ class custom_completion extends activity_custom_completion {
      * @return array
      */
     public function get_custom_rule_descriptions(): array {
-        $completionhighscore = $this->cm->customdata['customcompletionrules']['completionscore'] ?? 0;
+        $completionhighscore = $this->cm->get_custom_data()['customcompletionrules']['completionscore'] ?? 0;
         return [
             'completionscore' => get_string('completiondetail:score', 'quizgame', $completionhighscore),
         ];

@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Unit tests for lib.php
+ * Unit tests for the quizgame events.
  *
  * @package    mod_quizgame
  * @category   test
@@ -33,24 +33,31 @@ require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 /**
  * Unit tests for quizgame events.
  *
+ *
  * @package    mod_quizgame
  * @category   test
  * @copyright  2015 Stephen Bourget
  * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_event_testcase extends \advanced_testcase {
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\event\course_module_viewed::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\event\course_module_instance_list_viewed::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\event\game_score_added::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\event\game_started::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\event\game_scores_viewed::class)]
+final class events_test extends \advanced_testcase {
     /**
      * Test setup.
      */
     public function setUp(): void {
+        parent::setUp();
         $this->resetAfterTest();
     }
 
     /**
      * Test the course_module_viewed event.
      */
-    public function test_course_module_viewed() {
+    public function test_course_module_viewed(): void {
         global $DB;
         // There is no proper API to call to trigger this event, so what we are
         // doing here is simply making sure that the events returns the right information.
@@ -82,9 +89,6 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
         $this->assertEquals(CONTEXT_MODULE, $event->contextlevel);
         $this->assertEquals($quizgame->cmid, $event->contextinstanceid);
         $this->assertEquals($quizgame->id, $event->objectid);
-        $expected = [$course->id, 'quizgame', 'view', 'view.php?id=' . $quizgame->cmid,
-            $quizgame->id, $quizgame->cmid, ];
-
         $this->assertEquals(new \moodle_url('/mod/quizgame/view.php', ['id' => $quizgame->cmid]), $event->get_url());
         $this->assertEventContextNotUsed($event);
     }
@@ -92,7 +96,7 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
     /**
      * Test the course_module_instance_list_viewed event.
      */
-    public function test_course_module_instance_list_viewed() {
+    public function test_course_module_instance_list_viewed(): void {
         // There is no proper API to call to trigger this event, so what we are
         // doing here is simply making sure that the events returns the right information.
 
@@ -113,15 +117,13 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
         $this->assertInstanceOf('\mod_quizgame\event\course_module_instance_list_viewed', $event);
         $this->assertEquals(CONTEXT_COURSE, $event->contextlevel);
         $this->assertEquals($course->id, $event->contextinstanceid);
-        $expected = [$course->id, 'quizgame', 'view all', 'index.php?id=' . $course->id, ''];
-        $this->assertEventLegacyLogData($expected, $event);
         $this->assertEventContextNotUsed($event);
     }
 
     /**
      * Test the score_added event.
      */
-    public function test_score_added() {
+    public function test_score_added(): void {
 
         $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
@@ -132,7 +134,10 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
         $sink = $this->redirectEvents();
         $result = quizgame_add_highscore($quizgame, $score);
 
-        $events = $sink->get_events();
+        // Recording a score also updates the gradebook, which triggers its own events.
+        $events = array_values(array_filter($sink->get_events(), function ($event) {
+            return $event instanceof \mod_quizgame\event\game_score_added;
+        }));
         $this->assertCount(1, $events);
         $event = reset($events);
 
@@ -146,7 +151,7 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
     /**
      * Test the game_started event.
      */
-    public function test_game_started() {
+    public function test_game_started(): void {
 
         $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
@@ -169,7 +174,7 @@ class mod_quizgame_event_testcase extends \advanced_testcase {
     /**
      * Test the game_scores_viewed event.
      */
-    public function test_game_scores_viewed() {
+    public function test_game_scores_viewed(): void {
         // There is no proper API to call to trigger this event, so what we are
         // doing here is simply making sure that the events returns the right information.
 

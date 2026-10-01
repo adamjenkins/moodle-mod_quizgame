@@ -48,6 +48,7 @@ if ($id) {
 $cm = cm_info::create($cm);
 require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
+require_capability('mod/quizgame:view', $context);
 
 // Trigger module viewed event.
 $event = \mod_quizgame\event\course_module_viewed::create(
@@ -70,16 +71,28 @@ $PAGE->set_url('/mod/quizgame/view.php', ['id' => $cm->id]);
 $PAGE->set_title(format_string($quizgame->name));
 $PAGE->set_heading(format_string($course->fullname));
 $PAGE->set_context($context);
-$PAGE->set_focuscontrol('mod_quizgame_game');
 $renderer = $PAGE->get_renderer('mod_quizgame');
+
+// The player's best score so far, shown with the grading information.
+$bestscore = null;
+if (isloggedin() && !isguestuser()) {
+    $best = $DB->get_field_sql(
+        'SELECT MAX(score) FROM {quizgame_scores} WHERE quizgameid = :quizgameid AND userid = :userid',
+        ['quizgameid' => $quizgame->id, 'userid' => $USER->id]
+    );
+    if ($best !== null && $best !== false) {
+        $bestscore = (int) $best;
+    }
+}
 
 // Output starts here.
 echo $OUTPUT->header();
 
+// How game scores become grades.
+echo $renderer->render_grading_info($quizgame, $bestscore);
+
 // Game here.
-echo "<link href='$CFG->wwwroot/mod/quizgame/font.php' rel='stylesheet' type='text/css'>";
 echo $renderer->render_game($quizgame, $context);
-echo "<div class=fontloader>Loading game</div>";
 
 // Display link to view student scores.
 if (has_capability('mod/quizgame:viewallscores', $context)) {

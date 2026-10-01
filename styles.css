@@ -1,26 +1,35 @@
+@font-face {
+    font-family: 'Audiowide';
+    font-style: normal;
+    font-weight: 400;
+    src:
+        url([[font:mod_quizgame|audiowide-v14-latin-ext_latin-regular.woff2]]) format('woff2'),
+        url([[font:mod_quizgame|audiowide-v14-latin-ext_latin-regular.woff]]) format('woff');
+}
 .path-mod-quizgame div.fontloader {
     visibility: hidden;
-    font-family: 'Audiowide', Sans;
+    font-family: 'Audiowide', sans-serif;
 }
 .path-mod-quizgame #mod_quizgame_game {
     background-color: #000;
     width: 100%;
     height: 100%;
 }
-.quizgame-scores {
+.path-mod-quizgame .quizgame-scores {
     text-align: center;
 }
-.floating-button-container {
-    background: #fff;
-    border: 0.5rem solid #fff;
+.path-mod-quizgame .floating-button-container {
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border: 0.5rem solid var(--bs-body-bg);
 }
-.floating-game-canvas {
+.path-mod-quizgame .floating-game-canvas {
     position: fixed;
     top: 0;
     left: 0;
     z-index: 999999;
 }
-#page-mod-quizgame-view div[role="main"] {
+#page-mod-quizgame-view #mod_quizgame_game {
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;

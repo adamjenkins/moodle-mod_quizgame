@@ -33,17 +33,19 @@ require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 /**
  * Unit tests for quizgame calendar events.
  *
+ *
  * @package   mod_quizgame
  * @category  test
  * @copyright 2019 Stephen Bourget
  * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_lib_testcase extends \advanced_testcase {
+#[\PHPUnit\Framework\Attributes\CoversFunction('mod_quizgame_core_calendar_provide_event_action')]
+final class lib_test extends \advanced_testcase {
     /**
      * Test calendar event creation.
      */
-    public function test_quizgame_core_calendar_provide_event_action() {
+    public function test_quizgame_core_calendar_provide_event_action(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         // Create the activity.
@@ -70,7 +72,7 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
     /**
      * Test calendar event read as a non-user.
      */
-    public function test_quizgame_core_calendar_provide_event_action_for_non_user() {
+    public function test_quizgame_core_calendar_provide_event_action_for_non_user(): void {
         global $CFG;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -97,7 +99,7 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
     /**
      * Test calendar event read as a user.
      */
-    public function test_quizgame_core_calendar_provide_event_action_for_user() {
+    public function test_quizgame_core_calendar_provide_event_action_for_user(): void {
         global $CFG;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -129,7 +131,7 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
     /**
      * Test calendar event read for an activity already completed.
      */
-    public function test_quizgame_core_calendar_provide_event_action_already_completed() {
+    public function test_quizgame_core_calendar_provide_event_action_already_completed(): void {
         global $CFG;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -163,7 +165,7 @@ class mod_quizgame_lib_testcase extends \advanced_testcase {
     /**
      * Test calendar event read for an activity already completed by user.
      */
-    public function test_quizgame_core_calendar_provide_event_action_already_completed_for_user() {
+    public function test_quizgame_core_calendar_provide_event_action_already_completed_for_user(): void {
         global $CFG;
         $this->resetAfterTest();
         $this->setAdminUser();

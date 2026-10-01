@@ -14,19 +14,20 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * This class manages the confirmation pop-up (also called the pre-flight check)
- * that is sometimes shown when a use clicks the start attempt button.
+ * Quizventure game engine: a canvas space shooter in which each level is a quiz question
+ * and the enemy ships carry the answers.
  *
- * This is also responsible for opening the pop-up window, if the quiz requires to be in one.
+ * The browser does not know which answers are correct: each ship carries an opaque token,
+ * and every shot is checked (and scored) by the mod_quizgame_answer web service.
  *
  * @module    mod_quizgame/quizgame
- * @class     quizgame
  * @copyright 2016 John Okely <john@moodle.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, notification, ajax) {
+define(['jquery', 'core/notification', 'core/ajax'], function($, notification, ajax) {
     var questions;
     var quizgame;
+    var canRecord = true;
     var stage;
     var score = 0;
     var particles = [];
@@ -55,8 +56,12 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
     var touchDown = false;
     var mouseDown = false;
     var currentTeam = [];
-    var lastShot = 0;
-    var currentPointsLeft = 0;
+    var currentQuestionId = 0;
+    var levelNumber = 0;
+    var selectedMatch = null;
+    var gameId = 0;
+    var gameInterval = null;
+    var serverQueue = Promise.resolve();
     var context;
     var inFullscreen = false;
 
@@ -68,6 +73,78 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
             fullscreen();
         }
     });
+
+    /**
+     * Call a web service after every earlier call has finished.
+     *
+     * The server keeps the game state, so calls must arrive in the order the game made them.
+     * @param {string} methodname
+     * @param {object} args
+     * @return {Promise}
+     */
+    function serverCall(methodname, args) {
+        var call = serverQueue.then(function() {
+            return ajax.call([{methodname: methodname, args: args}])[0];
+        });
+        // Keep the queue going after a failure; the caller handles the error.
+        serverQueue = call.catch(function() {
+            return null;
+        });
+        return call;
+    }
+
+    /**
+     * Report a shot or the end of a level to the server and take over its score.
+     * @param {object} args questionid, action and tokens
+     * @return {Promise} resolves to the answer result, or null if the game has moved on
+     */
+    function answer(args) {
+        var thisGame = gameId;
+        args.quizgameid = quizgame;
+        return serverCall('mod_quizgame_answer', args).then(function(response) {
+            if (thisGame !== gameId) {
+                return null;
+            }
+            score = response.score;
+            return response;
+        }).catch(function(error) {
+            notification.exception(error);
+            return null;
+        });
+    }
+
+    /**
+     * Start the game loop if it is not running.
+     */
+    function startLoop() {
+        if (gameInterval === null) {
+            gameInterval = setInterval(function() {
+                draw(context, displayRect, gameObjects, particles, question);
+                update(displayRect, gameObjects, particles);
+            }, 40);
+        }
+    }
+
+    /**
+     * Stop the game loop; the last frame stays on screen.
+     */
+    function stopLoop() {
+        if (gameInterval !== null) {
+            clearInterval(gameInterval);
+            gameInterval = null;
+        }
+    }
+
+    /**
+     * Pause the game while the page is hidden, and resume it when it is shown again.
+     */
+    function visibilityChange() {
+        if (document.hidden) {
+            stopLoop();
+        } else if (player && player.alive) {
+            startLoop();
+        }
+    }
 
     /**
      * Play sound effect
@@ -95,17 +172,22 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
 
         displayRect.width = stage.clientWidth;
         displayRect.height = stage.clientHeight;
-        stage.style.width = displayRect.width;
-        stage.style.height = displayRect.height;
+        stage.style.width = displayRect.width + "px";
+        stage.style.height = displayRect.height + "px";
 
         sizeScreen(stage);
     }
 
     /**
-     * Adjust screen size (switch between modes).
+     * Adjust screen size when the browser enters or leaves fullscreen.
+     *
+     * Only leaving fullscreen (e.g. the user pressed Escape) restores the small screen layout;
+     * the event fired on entering fullscreen must not undo the fullscreen sizing.
      */
     function fschange() {
-        if (inFullscreen) {
+        var fsElement = document.fullscreenElement || document.msFullscreenElement ||
+            document.mozFullScreenElement || document.webkitFullscreenElement;
+        if (!fsElement && inFullscreen) {
             smallscreen();
         }
     }
@@ -232,7 +314,8 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * Helper function to load game objects
      */
     function loadGame() {
-
+        // No second start from the start screen while this one loads.
+        clearEvents();
         shuffle(questions);
 
         if (!loaded) {
@@ -256,12 +339,18 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * Helper function process game-over.
      */
     function endGame() {
-        ajax.call([{
-            methodname: 'mod_quizgame_update_score',
-            args: {quizgameid: quizgame, score: Math.trunc(score)},
-            fail: notification.exception
-        }]);
+        if (canRecord) {
+            // The server records the score it computed; nothing about the score is sent.
+            serverCall('mod_quizgame_update_score', {quizgameid: quizgame}).catch(notification.exception);
+        }
         menuEvents();
+        // Let the explosion play out, then stop redrawing the end of game screen.
+        var thisGame = gameId;
+        setTimeout(function() {
+            if (thisGame === gameId && !player.alive) {
+                stopLoop();
+            }
+        }, 3000);
     }
 
     /**
@@ -269,12 +358,8 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      */
     function gameLoaded() {
 
+        // Stop polling the start screen.
         clearInterval(interval);
-
-        interval = setInterval(function() {
-                draw(context, displayRect, gameObjects, particles, question);
-                update(displayRect, gameObjects, particles);
-        }, 40);
 
         startGame();
     }
@@ -285,19 +370,19 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
     function startGame() {
 
         score = 0;
+        gameId++;
         gameObjects = [];
         particles = [];
         level = -1;
+        levelNumber = 0;
         enemySpeed = 0.5;
         touchDown = false;
         mouseDown = false;
+        selectedMatch = null;
 
-        // Queue & trigger the game_started event.
-        ajax.call([{
-            methodname: 'mod_quizgame_start_game',
-            args: {quizgameid: quizgame},
-            fail: notification.exception
-        }]);
+        // Every player needs a started game: the server checks the shots of guests too.
+        serverCall('mod_quizgame_start_game', {quizgameid: quizgame}).catch(notification.exception);
+        startLoop();
 
         player = new Player("pix/ship.png", 0, 0);
         player.x = displayRect.width / 2;
@@ -332,6 +417,7 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * Helper function process next level (question).
      */
     function nextLevel() {
+        levelNumber++;
         level++;
         if (level >= questions.length) {
             level = 0;
@@ -348,47 +434,46 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * @returns {string}
      */
     function runLevel(questions, level, bounds) {
+        var q = questions[level];
         currentTeam = [];
-        lastShot = 0;
-        currentPointsLeft = 0;
+        currentQuestionId = q.id;
+        selectedMatch = null;
 
-        if (questions[level].type == 'truefalse') {
-            questions[level].answers.forEach(function(answer) {
-                var enemy = new TFEnemy(Math.random() * bounds.width, -Math.random() * bounds.height / 2,
-                                           answer.text, answer.fraction);
-                currentTeam.push(enemy);
-                gameObjects.push(enemy);
+        /**
+         * Random start position above the screen.
+         * @return {object}
+         */
+        var start = function() {
+            return {x: Math.random() * bounds.width, y: -Math.random() * bounds.height / 2};
+        };
+
+        if (q.type == 'match') {
+            q.stems.forEach(function(stem) {
+                var p = start();
+                currentTeam.push(new MatchEnemy(p.x, p.y, stem.text, stem.token, true));
             });
-            currentPointsLeft = 0; // This is unused by TrueFalse questions.
-        } else if (questions[level].type == 'multichoice') {
-            questions[level].answers.forEach(function(answer) {
-                var enemy = new MultiEnemy(Math.random() * bounds.width, -Math.random() * bounds.height / 2,
-                                           answer.text, answer.fraction, questions[level].single);
-                if (answer.fraction < 1) {
-                    currentTeam.push(enemy);
-                    if (answer.fraction > 0) {
-                        currentPointsLeft += parseFloat(answer.fraction);
-                    }
-                }
-                gameObjects.push(enemy);
+            q.answers.forEach(function(choice) {
+                var p = start();
+                currentTeam.push(new MatchEnemy(p.x, p.y, choice.text, choice.token, false));
             });
-        } else if (questions[level].type == 'match') {
-            var i = 0;
-            var fraction = 1 / (questions[level].stems.length * 2);
-            currentPointsLeft += 1;
-            questions[level].stems.forEach(function(stem) {
-                i++;
-                var question = new MatchEnemy(Math.random() * bounds.width, -Math.random() * bounds.height / 2,
-                                              stem.question, fraction, -i, true);
-                var answer = new MatchEnemy(Math.random() * bounds.width, -Math.random() * bounds.height / 2,
-                                            stem.answer, fraction, i);
-                currentTeam.push(question);
-                currentTeam.push(answer);
-                gameObjects.push(question);
-                gameObjects.push(answer);
+        } else {
+            q.answers.forEach(function(choice) {
+                var p = start();
+                currentTeam.push(new ChoiceEnemy(p.x, p.y, choice.text, choice.token));
             });
         }
-        return questions[level].question;
+        currentTeam.forEach(function(enemy) {
+            gameObjects.push(enemy);
+        });
+        return q.question;
+    }
+
+    /**
+     * Move on to the next level once the server says the current one is complete.
+     */
+    function advanceLevel() {
+        killAllAlive();
+        nextLevel();
     }
 
     /**
@@ -440,6 +525,7 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      */
     function update(bounds, objects, particles) {
         var i = 0;
+        checkLevelEmpty();
         for (i = 0; i < 3; i++) {
             particles.push(new Star(bounds));
         }
@@ -640,9 +726,9 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * @param {int} x
      * @param {int} y
      * @param {string} text
-     * @param {float} fraction
+     * @param {string} token the answer token the server checks
      */
-    function Enemy(src, x, y, text, fraction) {
+    function Enemy(src, x, y, text, token) {
         GameObject.call(this, src, x, y);
         this.xspeed = enemySpeed;
         this.yspeed = enemySpeed * (2 + Math.random()) / 4;
@@ -650,7 +736,10 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
         this.movespeed.y = 0;
         this.direction.y = 1;
         this.text = text;
-        this.fraction = fraction;
+        this.token = token;
+        this.questionid = currentQuestionId;
+        this.levelnum = levelNumber;
+        this.pending = false;
         this.movementClock = 0;
         this.shotFrequency = 80;
         this.shotClock = (1 + Math.random()) * this.shotFrequency;
@@ -697,12 +786,8 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
             this.x = bounds.x - this.image.width;
         }
         if (this.y > bounds.height + this.image.height && this.alive) {
+            // The server charges correct answers that got away when the level ends.
             this.alive = false;
-            if (this.fraction > 0) {
-                currentPointsLeft -= this.fraction;
-                score -= 1000 * this.fraction;
-            }
-
             shipReachedEnd.call(this);
         }
     };
@@ -717,15 +802,33 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
         wrapText(context, this.text, true, 17, displayRect.width * 0.2, this.x + this.image.width / 2, this.y - 5);
     };
 
-    Enemy.prototype.die = function() {
+    /**
+     * Destroy the ship.
+     * @param {boolean} hit whether the player scored with it (bigger explosion)
+     */
+    Enemy.prototype.die = function(hit) {
         GameObject.prototype.die.call(this);
-        spray(this.x + this.image.width, this.y + this.image.height, 50 + (this.fraction * 150), "#FF0000");
-
-        // Adjust Score.
-        score += this.fraction * 1000;
-
-        // Kill off the ship.
+        spray(this.x + this.image.width, this.y + this.image.height, hit ? 200 : 50, "#FF0000");
         playSound("explosion");
+    };
+
+    /**
+     * Send a laser back down from this ship, as when a wrong answer deflects a shot.
+     */
+    Enemy.prototype.deflectShot = function() {
+        var laser = new Laser(this.x + this.image.width / 2, this.y + this.image.height, false, 24);
+        laser.direction.y = 1;
+        gameObjects.unshift(laser);
+        playSound("deflect");
+    };
+
+    /**
+     * Whether a server response still concerns this ship's level.
+     * @param {object|null} response
+     * @return {boolean}
+     */
+    Enemy.prototype.current = function(response) {
+        return response !== null && this.levelnum === levelNumber && player.alive;
     };
 
     Enemy.prototype.gotShot = function(shot) {
@@ -740,83 +843,50 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
     function killAllAlive() {
         currentTeam.forEach(function(enemy) {
             if (enemy.alive) {
-                // Make the fraction 0 so it won't count as anything and make a new level.
-                enemy.fraction = 0;
-                enemy.die();
+                enemy.die(false);
             }
         });
         currentTeam = [];
+        selectedMatch = null;
     }
 
     /**
-     * Helper function for True/False questions
+     * An answer ship of a true/false or multiple choice question.
      * @param {int} x
      * @param {int} y
      * @param {string} text
-     * @param {float} fraction
+     * @param {string} token
      */
-    function TFEnemy(x, y, text, fraction) {
-        Enemy.call(this, "pix/enemy.png", x, y, text, fraction);
+    function ChoiceEnemy(x, y, text, token) {
+        Enemy.call(this, "pix/enemy.png", x, y, text, token);
     }
 
-    TFEnemy.prototype = Object.create(Enemy.prototype);
+    ChoiceEnemy.prototype = Object.create(Enemy.prototype);
 
-    TFEnemy.prototype.die = function() {
-        // TrueFalse questions are very simple, if either of the ships die, Enemy.prototype.die will handle
-        // the score adding of 1000 or 0, and then this will kill the other remaining ship.
-        Enemy.prototype.die.call(this);
-        killAllAlive();
-        // Only goes to the next level if the result is "true", as no matter what enemy dies first, the opposite will
-        // die immediately after.
-        if (this.fraction > 0) {
-            nextLevel();
+    ChoiceEnemy.prototype.gotShot = function(shot) {
+        shot.die();
+        if (this.pending || !player.alive) {
+            return;
         }
-    };
-
-    TFEnemy.prototype.gotShot = function(shot) {
-        if (this.fraction > 0) {
-            shot.die();
-            this.die();
-        } else {
-            score += (this.fraction - 0.5) * 600;
-            shot.deflect();
-        }
-    };
-
-    /**
-     * Helper function for multiple choice questions (MCQ)
-     * @param {int} x
-     * @param {int} y
-     * @param {string} text
-     * @param {float} fraction
-     * @param {boolean} single
-     */
-    function MultiEnemy(x, y, text, fraction, single) {
-        Enemy.call(this, "pix/enemy.png", x, y, text, fraction);
-        this.single = single;
-    }
-
-    MultiEnemy.prototype = Object.create(Enemy.prototype);
-
-    MultiEnemy.prototype.die = function() {
-        Enemy.prototype.die.call(this);
-        if (this.fraction > 0) {
-            currentPointsLeft -= this.fraction;
-        }
-        if ((this.single && this.fraction === 1) && this.fraction >= 1 || (this.fraction > 0 && currentPointsLeft <= 0)) {
-            killAllAlive();
-            nextLevel();
-        }
-    };
-
-    MultiEnemy.prototype.gotShot = function(shot) {
-        if (this.fraction >= 1 || (this.fraction > 0 && !this.single)) {
-            shot.die();
-            this.die();
-        } else {
-            score += (this.fraction - 0.5) * 600;
-            shot.deflect();
-        }
+        var ship = this;
+        ship.pending = true;
+        answer({questionid: ship.questionid, level: ship.levelnum, action: 'shoot', token: ship.token})
+        .then(function(response) {
+            ship.pending = false;
+            if (!ship.current(response)) {
+                return;
+            }
+            if (response.result === 'hit' && ship.alive) {
+                ship.die(true);
+            } else if (response.result === 'deflect' && ship.alive) {
+                ship.deflectShot();
+            }
+            // The level may be complete even if the ship fell off screen while the answer was checked.
+            if (response.levelcomplete) {
+                advanceLevel();
+            }
+            return;
+        }).catch(notification.exception);
     };
 
     /**
@@ -824,64 +894,69 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * @param {int} x
      * @param {int} y
      * @param {string} text
-     * @param {float} fraction
-     * @param {int} pairid
+     * @param {string} token
      * @param {boolean} stem
      */
-    function MatchEnemy(x, y, text, fraction, pairid, stem) {
+    function MatchEnemy(x, y, text, token, stem) {
         this.stem = stem ? true : false;
         if (this.stem) {
-            Enemy.call(this, "pix/enemystem.png", x, y, text, fraction);
+            Enemy.call(this, "pix/enemystem.png", x, y, text, token);
         } else {
-            Enemy.call(this, "pix/enemychoice.png", x, y, text, fraction);
+            Enemy.call(this, "pix/enemychoice.png", x, y, text, token);
         }
-        this.pairid = pairid;
         this.shotFrequency = 160;
         this.hightlighted = false;
     }
 
     MatchEnemy.prototype = Object.create(Enemy.prototype);
 
-    MatchEnemy.prototype.die = function() {
-        currentPointsLeft -= this.fraction;
-        // Sets the fraction as 0 to stop it adding to the score in #die()
-        this.fraction = 0;
-        Enemy.prototype.die.call(this);
-    };
-
     MatchEnemy.prototype.gotShot = function(shot) {
-        if (shot.alive && this.alive) {
-            if (lastShot == -this.pairid) {
-
-                // Increasing the score here instead of in #die(), due to rounding issues being a few numbers off.
-                // This must be done before because when #die is invoked, as it sets the fraction as 0.
-                score += this.fraction * 1000 * 2;
-
-                shot.die();
-                this.die();
-                var alives = 0;
-                currentTeam.forEach(function(match) {
-                    if (match.pairid == lastShot) {
-                        match.die();
-                    }
-                    if (match.alive) {
-                        alives++;
-                    }
-                });
-
-                if (alives <= 0) {
-                    nextLevel();
-                }
-            } else {
-                if (lastShot == this.pairid) {
-                    shot.deflect();
-                } else {
-                    shot.die();
-                    this.hightlight();
-                    lastShot = this.pairid;
-                }
-            }
+        if (!shot.alive || !this.alive || this.pending || !player.alive) {
+            return;
         }
+        if (selectedMatch === this) {
+            shot.deflect();
+            return;
+        }
+        shot.die();
+        var other = selectedMatch;
+        if (!other || !other.alive || other.pending || other.stem === this.stem) {
+            this.hightlight();
+            selectedMatch = this;
+            return;
+        }
+
+        // A stem and an answer: ask the server whether they belong together.
+        var ship = this;
+        var stem = ship.stem ? ship : other;
+        var choice = ship.stem ? other : ship;
+        ship.pending = other.pending = true;
+        answer({questionid: ship.questionid, level: ship.levelnum, action: 'shoot', token: stem.token, token2: choice.token})
+        .then(function(response) {
+            ship.pending = other.pending = false;
+            if (!ship.current(response)) {
+                return;
+            }
+            if (response.result === 'hit') {
+                if (ship.alive) {
+                    ship.die(true);
+                }
+                if (other.alive) {
+                    other.die(true);
+                }
+                if (selectedMatch === other || selectedMatch === ship) {
+                    selectedMatch = null;
+                }
+            } else if (ship.alive && (selectedMatch === other || selectedMatch === null)) {
+                // Not a pair: the ship just shot becomes the selection, unless the player selected another since.
+                ship.hightlight();
+                selectedMatch = ship;
+            }
+            if (response.levelcomplete) {
+                advanceLevel();
+            }
+            return;
+        }).catch(notification.exception);
     };
 
     MatchEnemy.prototype.hightlight = function() {
@@ -1133,12 +1208,25 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * Helper function for end of level.
      */
     function shipReachedEnd() {
-        var amountLeft = currentTeam.filter(function(enemy) {
-            return enemy.alive;
-        }).length;
+        checkLevelEmpty();
+    }
 
-        if (amountLeft === 0 && (currentPointsLeft < this.fraction || currentPointsLeft <= 0)
-            && this.level === level && player.alive) {
+    /**
+     * End the level once no ship of it is left and no answer is being checked.
+     *
+     * Ships leave by falling off screen or by being shot without completing the level (e.g. the last
+     * correct ship of a multi-answer question got away earlier); either way the server closes the
+     * level, charging what got away.
+     */
+    function checkLevelEmpty() {
+        if (!player || !player.alive || currentTeam.length === 0) {
+            return;
+        }
+        var busy = currentTeam.some(function(enemy) {
+            return enemy.alive || enemy.pending;
+        });
+        if (!busy) {
+            answer({questionid: currentQuestionId, level: levelNumber, action: 'levelend'});
             nextLevel();
         }
     }
@@ -1148,13 +1236,56 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
     var canShoot = true;
 
     /**
+     * Normalise a keyboard event to a key name, using e.key with a keyCode fallback.
+     * @param {object} e
+     * @return {string} One of ' ', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown', or '' for other keys.
+     */
+    function gameKey(e) {
+        var keys = {'32': ' ', '37': 'ArrowLeft', '38': 'ArrowUp', '39': 'ArrowRight', '40': 'ArrowDown'};
+        var aliases = {'Spacebar': ' ', 'Left': 'ArrowLeft', 'Up': 'ArrowUp', 'Right': 'ArrowRight', 'Down': 'ArrowDown'};
+        var key = e.key;
+        if (typeof key === 'string' && key !== '' && key !== 'Unidentified') {
+            if (aliases.hasOwnProperty(key)) {
+                key = aliases[key];
+            }
+        } else {
+            key = keys[e.keyCode] || '';
+        }
+        return [' ', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].indexOf(key) !== -1 ? key : '';
+    }
+
+    /**
+     * Whether a keyboard event comes from a form control or editable element, which must keep its keys.
+     * @param {object} e
+     * @return {boolean}
+     */
+    function isEditableTarget(e) {
+        var target = e.target;
+        if (!target || target === document || target === window) {
+            return false;
+        }
+        if (target.isContentEditable) {
+            return true;
+        }
+        if (typeof target.closest === 'function') {
+            return target.closest('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])') !== null;
+        }
+        return false;
+    }
+
+    /**
      * Helper function for game menu from keyboard.
      * @param {object} e
      */
     function menukeydown(e) {
-        if ([32, 37, 38, 39, 40].indexOf(e.keyCode) !== -1) {
+        if (isEditableTarget(e)) {
+            return;
+        }
+        var key = gameKey(e);
+        if (key !== '') {
             e.preventDefault();
-            if (e.keyCode === 32) {
+            // Ignore auto-repeat so holding space at death does not skip the end of game screen.
+            if (key === ' ' && !e.repeat) {
                 loadGame();
             }
         }
@@ -1185,17 +1316,21 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * @param {object} e
      */
     function keydown(e) {
-        if ([32, 37, 38, 39, 40].indexOf(e.keyCode) !== -1) {
+        if (isEditableTarget(e)) {
+            return;
+        }
+        var key = gameKey(e);
+        if (key !== '') {
             e.preventDefault();
-            if (e.keyCode === 32 && player.alive && canShoot) {
+            if (key === ' ' && player.alive && canShoot) {
                 player.Shoot();
-            } else if (e.keyCode === 37) {
+            } else if (key === 'ArrowLeft') {
                 player.direction.x = -1;
-            } else if (e.keyCode === 38) {
+            } else if (key === 'ArrowUp') {
                 player.direction.y = -1;
-            } else if (e.keyCode === 39) {
+            } else if (key === 'ArrowRight') {
                 player.direction.x = 1;
-            } else if (e.keyCode === 40) {
+            } else if (key === 'ArrowDown') {
                 player.direction.y = 1;
             }
         }
@@ -1206,11 +1341,12 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
      * @param {object} e
      */
     function keyup(e) {
-        if (e.keyCode === 32) {
+        var key = gameKey(e);
+        if (key === ' ') {
             canShoot = true;
-        } else if ([37, 39].indexOf(e.keyCode) !== -1) {
+        } else if (key === 'ArrowLeft' || key === 'ArrowRight') {
             player.direction.x = 0;
-        } else if ([38, 40].indexOf(e.keyCode) !== -1) {
+        } else if (key === 'ArrowUp' || key === 'ArrowDown') {
             player.direction.y = 0;
         }
     }
@@ -1338,12 +1474,15 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
 
     /**
      * Initialization of the game.
-     * @param {array} q
-     * @param {array} qid
+     *
+     * The questions are read from the canvas' data-questions attribute.
+     * @param {int} qid The quizgame instance id.
+     * @param {boolean} canrecord Whether scores are recorded for this user (false e.g. for guests,
+     *     whose games are checked but not recorded). Defaults to true.
      */
-    function doInitialize(q, qid) {
-        questions = q;
+    function doInitialize(qid, canrecord) {
         quizgame = qid;
+        canRecord = (typeof canrecord === 'undefined') ? true : !!canrecord;
         if (document.addEventListener) {
             document.addEventListener('fullscreenchange', fschange, false);
             document.addEventListener('MSFullscreenChange', fschange, false);
@@ -1351,6 +1490,8 @@ define(['jquery', 'core/yui', 'core/notification', 'core/ajax'], function($, Y, 
             document.addEventListener('webkitfullscreenchange', fschange, false);
         }
         stage = document.getElementById("mod_quizgame_game");
+        questions = JSON.parse(stage.dataset.questions || '[]');
+        document.addEventListener('visibilitychange', visibilityChange, false);
         context = stage.getContext("2d");
         smallscreen();
         interval = setInterval(function() {

@@ -40,15 +40,9 @@ class mod_quizgame_renderer extends plugin_renderer_base {
      * @return string The HTML code of the game
      */
     public function render_game($quizgame, $context) {
-
-        $categoryid = intval(explode(',', $quizgame->questioncategory)[0]);
-        if (!empty($quizgame->questioncategorysubcats)) {
-            $categoryids = array_values(question_categorylist($categoryid));
-        } else {
-            $categoryids = [$categoryid];
-        }
-        $questionids = question_bank::get_finder()->get_questions_from_categories($categoryids, '');
-        $questions = question_load_questions($questionids);
+        // The browser gets answer tokens only; correctness is checked by the server per shot.
+        $session = new \mod_quizgame\local\game_session($quizgame);
+        $questions = $session->prepare($context);
 
         $this->page->requires->strings_for_js(
             ['score',
@@ -58,70 +52,44 @@ class mod_quizgame_renderer extends plugin_renderer_base {
             ],
             'mod_quizgame'
         );
-
-        $qjson = [];
-        foreach ($questions as $question) {
-            if ($question->qtype == "multichoice" || $question->qtype == "truefalse") {
-                $questiontext = quizgame_cleanup($question->questiontext);
-                $answers = [];
-                foreach ($question->options->answers as $answer) {
-                    $answertext = quizgame_cleanup($answer->answer);
-                    $answers[] = ["text" => $answertext, "fraction" => $answer->fraction];
-                }
-
-                // The "single" entry is used by multichoice to determine single or multi answer.
-                if ($question->qtype == "truefalse") {
-                    $qjson[] = ["question" => $questiontext, "answers" => $answers, "type" => $question->qtype];
-                } else {
-                    $qjson[] = ["question" => $questiontext, "answers" => $answers, "type" => $question->qtype,
-                        "single" => $question->qtype == "multichoice" && $question->options->single == 1, ];
-                }
-            }
-            if ($question->qtype == "match") {
-                $subquestions = [];
-                foreach ($question->options->subquestions as $subquestion) {
-                    $questiontext = quizgame_cleanup($subquestion->questiontext);
-                    $answertext = quizgame_cleanup($subquestion->answertext);
-                    $subquestions[] = ["question" => $questiontext, "answer" => $answertext];
-                }
-                $qjson[] = ["question" => get_string("match", "quiz"), "stems" => $subquestions, "type" => $question->qtype];
-            }
-        }
-
-        shuffle($qjson);
-
-        // Pass questions via js_init_code (no size limit) to avoid the 1024-char
-        // js_call_amd argument limit that fires in debugdeveloper mode.
-        // JSON_HEX_TAG prevents </script> inside a question from breaking the inline script block.
-        $qjsonenc = json_encode($qjson, JSON_HEX_TAG);
-        $quizid   = (int) $quizgame->id;
-        $this->page->requires->js_init_code(
-            "require(['mod_quizgame/quizgame'], function(qg) { qg.init($qjsonenc, $quizid); });",
-            true
+        // Guests and others without the play capability can play, but their scores are not recorded.
+        $this->page->requires->js_call_amd(
+            'mod_quizgame/quizgame',
+            'init',
+            [(int) $quizgame->id, has_capability('mod/quizgame:play', $context)]
         );
 
-        $display = '<div>';
-        $display .= get_string('howtoplay', 'mod_quizgame') . $this->output->help_icon('howtoplay', 'mod_quizgame', '');
-        $display .= '</div>';
+        $display = html_writer::div(
+            get_string('howtoplay', 'mod_quizgame') . $this->output->help_icon('howtoplay', 'mod_quizgame', '')
+        );
 
-        $display .= '<canvas id="mod_quizgame_game"></canvas>';
-        $display .= '<audio id="mod_quizgame_sound_laser" preload="auto">' .
-                    '<source src="sound/Laser.wav" type="audio/wav" />' .
-                    '</audio>';
-        $display .= '<audio id="mod_quizgame_sound_explosion" preload="auto">' .
-                    '<source src="sound/Explosion.wav" type="audio/wav" />' .
-                    '</audio>';
-        $display .= '<audio id="mod_quizgame_sound_deflect" preload="auto">' .
-                    '<source src="sound/Deflect.wav" type="audio/wav" />' .
-                    '</audio>';
-        $display .= '<audio id="mod_quizgame_sound_enemylaser" preload="auto">' .
-                    '<source src="sound/EnemyLaser.wav" type="audio/wav" />' .
-                    '</audio>';
+        $gamelabel = get_string('gamecanvaslabel', 'mod_quizgame');
+        // The questions travel in an attribute (escaped by html_writer), read by the AMD module.
+        $display .= html_writer::tag('canvas', s($gamelabel), [
+            'id' => 'mod_quizgame_game',
+            'role' => 'img',
+            'aria-label' => $gamelabel,
+            // Hex-encode &, <, >, ' and " so no HTML entity can appear in the JSON (s() keeps numeric entities).
+            'data-questions' => json_encode(
+                $questions,
+                JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR
+            ),
+        ]);
+        $sounds = ['laser' => 'Laser', 'explosion' => 'Explosion', 'deflect' => 'Deflect', 'enemylaser' => 'EnemyLaser'];
+        foreach ($sounds as $id => $file) {
+            $display .= '<audio id="mod_quizgame_sound_' . $id . '" preload="auto">' .
+                '<source src="' . (new moodle_url('/mod/quizgame/sound/' . $file . '.wav'))->out() . '" type="audio/wav" />' .
+                '</audio>';
+        }
 
         $display .= '<div id="button_container">';
-        $display .= '<input id="mod_quizgame_fullscreen_button" class= "btn btn-secondary" type="button" value="' .
-                    get_string('fullscreen', 'mod_quizgame') . '">';
-        $display .= ' &nbsp ';
+        $display .= html_writer::empty_tag('input', [
+            'id' => 'mod_quizgame_fullscreen_button',
+            'class' => 'btn btn-secondary',
+            'type' => 'button',
+            'value' => get_string('fullscreen', 'mod_quizgame'),
+        ]);
+        $display .= ' ';
         $display .= html_writer::checkbox(
             'sound',
             '',
@@ -130,8 +98,38 @@ class mod_quizgame_renderer extends plugin_renderer_base {
             ['id' => 'mod_quizgame_sound_on']
         );
         $display .= '</div>';
+        // Hidden text in the game font, so the browser loads the font before the canvas uses it.
+        $display .= html_writer::div(get_string('loadinggame', 'mod_quizgame'), 'fontloader');
 
         return $display;
+    }
+
+    /**
+     * Render how game scores turn into grades, plus the player's best score.
+     *
+     * @param stdClass $quizgame The quizgame record
+     * @param int|null $bestscore The current user's best score, null if they have none
+     * @return string HTML, empty when the activity is not graded with points
+     */
+    public function render_grading_info($quizgame, $bestscore) {
+        if ((int) $quizgame->grade <= 0) {
+            return '';
+        }
+        $grade = format_float($quizgame->grade, 0);
+        if (!empty($quizgame->gradepassingscore)) {
+            $targetinfo = get_string('gradetargetinfo', 'mod_quizgame', (object) [
+                'target' => format_float($quizgame->gradepassingscore, 0),
+                'grade' => $grade,
+            ]);
+        } else {
+            $targetinfo = get_string('graderawinfo', 'mod_quizgame', $grade);
+        }
+        $data = [
+            'targetinfo' => $targetinfo,
+            'hasbestscore' => $bestscore !== null,
+            'bestscoreinfo' => $bestscore === null ? '' : get_string('yourbestscore', 'mod_quizgame', format_float($bestscore, 0)),
+        ];
+        return $this->render_from_template('mod_quizgame/grading_info', $data);
     }
 
     /**

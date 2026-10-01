@@ -30,6 +30,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/course/moodleform_mod.php');
 require_once($CFG->dirroot . '/lib/questionlib.php');
+require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
 /**
  * Module instance settings form
@@ -38,12 +39,13 @@ require_once($CFG->dirroot . '/lib/questionlib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_mod_form extends moodleform_mod {
+    /** @var array|null Category ids the current user may choose, keyed by id (see get_category_options()). */
+    protected $allowedcategoryids = null;
+
     /**
      * Defines forms elements
      */
     public function definition() {
-        global $CFG, $COURSE, $DB;
-
         $mform = $this->_form;
 
         // Adding the "general" fieldset, where all the common settings are showed.
@@ -51,43 +53,29 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         // Adding the standard "name" field.
         $mform->addElement('text', 'name', get_string('quizgamename', 'quizgame'), ['size' => '64']);
-        if (!empty($CFG->formatstringstriptags)) {
-            $mform->setType('name', PARAM_TEXT);
-        } else {
-            $mform->setType('name', PARAM_CLEAN);
-        }
+        $mform->setType('name', PARAM_TEXT);
         $mform->addRule('name', null, 'required', null, 'client');
         $mform->addRule('name', get_string('maximumchars', '', 255), 'maxlength', 255, 'client');
         $mform->addHelpButton('name', 'quizgamename', 'quizgame');
 
         // Adding the standard "intro" and "introformat" fields.
-        if ($CFG->branch >= 29) {
-            $this->standard_intro_elements();
-        } else {
-            $this->add_intro_editor();
-        }
+        $this->standard_intro_elements();
 
-        // Moodle 5.x question_category_options only accepts CONTEXT_MODULE contexts.
-        // Collect all module-level contexts within this course that contain question categories.
-        $contextids = $DB->get_fieldset_sql(
-            "SELECT DISTINCT qc.contextid
-               FROM {question_categories} qc
-               JOIN {context} ctx ON ctx.id = qc.contextid AND ctx.contextlevel = :ctxlevel
-               JOIN {course_modules} cm ON cm.id = ctx.instanceid AND cm.course = :courseid",
-            ['ctxlevel' => CONTEXT_MODULE, 'courseid' => $COURSE->id]
-        );
-        if ($contextids) {
-            $contexts = array_map(fn($id) => context::instance_by_id($id), $contextids);
-            $categories = qbank_managecategories\helper::question_category_options($contexts, false, 0);
-        } else {
-            $categories = [];
+        $categories = $this->get_category_options();
+        if (!$categories) {
+            $mform->addElement(
+                'static',
+                'noquestionbanks',
+                get_string('questioncategory', 'quizgame'),
+                get_string('noquestionbanks', 'quizgame')
+            );
         }
-
         $mform->addElement('selectgroups', 'questioncategory', get_string('questioncategory', 'quizgame'), $categories);
+        $mform->addRule('questioncategory', null, 'required', null, 'client');
         $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
 
         $mform->addElement(
-            'checkbox',
+            'advcheckbox',
             'questioncategorysubcats',
             '',
             get_string('questioncategorysubcats', 'quizgame')
@@ -102,7 +90,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
         $mform->setType('gradepassingscore', PARAM_INT);
         $mform->setDefault('gradepassingscore', 0);
         $mform->addHelpButton('gradepassingscore', 'gradepassingscore', 'quizgame');
-        $mform->hideIf('gradepassingscore', 'grade[modgrade_type]', 'eq', 'none');
+        $mform->hideIf('gradepassingscore', 'grade[modgrade_type]', 'neq', 'point');
 
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
@@ -111,30 +99,123 @@ class mod_quizgame_mod_form extends moodleform_mod {
     }
 
     /**
+     * Build the question category options: categories of question banks in this course's
+     * activities, and of shared question banks in other courses, that the current user may use
+     * questions from.
+     *
+     * Option keys are "categoryid,contextid", the format the questioncategory field stores.
+     *
+     * @return array Options for a selectgroups element
+     */
+    protected function get_category_options(): array {
+        global $COURSE, $DB;
+
+        $this->allowedcategoryids = [];
+        $sharedmods = \core_question\local\bank\question_bank_helper::get_activity_types_with_shareable_questions();
+        $params = ['ctxlevel' => CONTEXT_MODULE, 'courseid' => $COURSE->id];
+        $sharedsql = '';
+        if ($sharedmods) {
+            [$modsql, $modparams] = $DB->get_in_or_equal($sharedmods, SQL_PARAMS_NAMED, 'mod');
+            $sharedsql = "OR m.name $modsql";
+            $params += $modparams;
+        }
+        // Banks in this course, plus shared banks anywhere (private banks of other courses never).
+        $contextids = $DB->get_fieldset_sql(
+            "SELECT DISTINCT qc.contextid
+               FROM {question_categories} qc
+               JOIN {context} ctx ON ctx.id = qc.contextid AND ctx.contextlevel = :ctxlevel
+               JOIN {course_modules} cm ON cm.id = ctx.instanceid AND cm.deletioninprogress = 0
+               JOIN {modules} m ON m.id = cm.module
+              WHERE cm.course = :courseid $sharedsql",
+            $params
+        );
+        $contexts = [];
+        foreach ($contextids as $contextid) {
+            $context = context::instance_by_id($contextid, IGNORE_MISSING);
+            if ($context && has_capability('moodle/question:useall', $context)) {
+                $contexts[] = $context;
+            }
+        }
+        $categories = $contexts ? qbank_managecategories\helper::question_category_options($contexts, false, 0) : [];
+        foreach ($categories as $options) {
+            foreach (array_keys($options) as $key) {
+                $this->allowedcategoryids[quizgame_get_category_id($key)] = true;
+            }
+        }
+
+        // Keep the game's current category selectable even if this editor may not use its bank,
+        // so saving other settings never silently switches the questions.
+        $currentid = quizgame_get_category_id($this->current->questioncategory ?? '');
+        if ($currentid && !isset($this->allowedcategoryids[$currentid]) && quizgame_category_allowed($currentid, $COURSE->id)) {
+            $current = $DB->get_record('question_categories', ['id' => $currentid], 'id, name, contextid', MUST_EXIST);
+            $categories = [get_string('currentcategory', 'quizgame') => [
+                $current->id . ',' . $current->contextid => format_string($current->name),
+            ]] + $categories;
+            $this->allowedcategoryids[$currentid] = true;
+        }
+        return $categories;
+    }
+
+    /**
+     * Form validation.
+     *
+     * @param array $data submitted data
+     * @param array $files submitted files
+     * @return array errors keyed by element name
+     */
+    public function validation($data, $files) {
+        $errors = parent::validation($data, $files);
+
+        $categoryid = quizgame_get_category_id($data['questioncategory'] ?? '');
+        if (
+            $this->_form->elementExists('questioncategory')
+            && (!$categoryid || !isset($this->allowedcategoryids[$categoryid]))
+        ) {
+            $errors['questioncategory'] = get_string('invalidquestioncategory', 'quizgame');
+        }
+
+        if (isset($data['grade']) && $data['grade'] < 0) {
+            $errors['grade'] = get_string('scalesnotsupported', 'quizgame');
+        }
+
+        if (isset($data['gradepassingscore']) && $data['gradepassingscore'] < 0) {
+            $errors['gradepassingscore'] = get_string('gradepassingscorenegative', 'quizgame');
+        }
+
+        return $errors;
+    }
+
+    /**
      * Define custom completion rules
      * @return array
      */
     public function add_completion_rules() {
-        $mform =& $this->_form;
+        $mform = $this->_form;
+        $suffix = $this->get_suffix();
+
+        $completionscoreenabledel = 'completionscoreenabled' . $suffix;
+        $completionscoreel = 'completionscore' . $suffix;
+        $completionscoregroupel = 'completionscoregroup' . $suffix;
+
         $group = [];
         $group[] =& $mform->createElement(
             'checkbox',
-            'completionscoreenabled',
+            $completionscoreenabledel,
             '',
             get_string('completionscore', 'quizgame')
         );
-        $group[] =& $mform->createElement('text', 'completionscore', '', ['size' => 3]);
-        $mform->setType('completionscore', PARAM_INT);
+        $group[] =& $mform->createElement('text', $completionscoreel, '', ['size' => 6]);
+        $mform->setType($completionscoreel, PARAM_INT);
         $mform->addGroup(
             $group,
-            'completionscoregroup',
+            $completionscoregroupel,
             get_string('completionscoregroup', 'quizgame'),
             [' '],
             false
         );
-        $mform->disabledIf('completionscore', 'completionscoreenabled', 'notchecked');
-        $mform->addHelpButton('completionscoregroup', 'completionscoregroup', 'quizgame');
-        return ['completionscoregroup'];
+        $mform->disabledIf($completionscoreel, $completionscoreenabledel, 'notchecked');
+        $mform->addHelpButton($completionscoregroupel, 'completionscoregroup', 'quizgame');
+        return [$completionscoregroupel];
     }
 
     /**
@@ -143,26 +224,25 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * @return bool
      */
     public function completion_rule_enabled($data) {
-        return (!empty($data['completionscoreenabled']) && $data['completionscore'] != 0);
+        $suffix = $this->get_suffix();
+        return !empty($data['completionscoreenabled' . $suffix]) && !empty($data['completionscore' . $suffix]);
     }
 
     /**
-     * Loads custom completion data.
-     * @return boolean
+     * Turn off the score completion rule when its checkbox is not ticked.
+     *
+     * @param stdClass $data passed by reference
      */
-    public function get_data() {
-        $data = parent::get_data();
-        if (!$data) {
-            return false;
-        }
+    public function data_postprocessing($data) {
+        parent::data_postprocessing($data);
         if (!empty($data->completionunlocked)) {
-            // Turn off completion settings if the checkboxes aren't ticked.
-            $autocompletion = !empty($data->completion) && $data->completion == COMPLETION_TRACKING_AUTOMATIC;
-            if (empty($data->completionscoreenabled) || !$autocompletion) {
-                $data->completionscore = 0;
+            $suffix = $this->get_suffix();
+            $completion = $data->{'completion' . $suffix} ?? null;
+            $autocompletion = !empty($completion) && $completion == COMPLETION_TRACKING_AUTOMATIC;
+            if (empty($data->{'completionscoreenabled' . $suffix}) || !$autocompletion) {
+                $data->{'completionscore' . $suffix} = 0;
             }
         }
-        return $data;
     }
 
     /**
@@ -170,20 +250,30 @@ class mod_quizgame_mod_form extends moodleform_mod {
      * @param array $defaultvalues
      */
     public function data_preprocessing(&$defaultvalues) {
+        global $DB;
+
         parent::data_preprocessing($defaultvalues);
 
         // Set up the completion checkboxes which aren't part of standard data.
-        if (!empty($defaultvalues['completionscore'])) {
-            $defaultvalues['completionscoreenabled'] = 1;
-        } else {
-            $defaultvalues['completionscoreenabled'] = 0;
-        }
-        if (empty($defaultvalues['completionscore'])) {
-            $defaultvalues['completionscore'] = 10000;
+        $suffix = $this->get_suffix();
+        $completionscoreel = 'completionscore' . $suffix;
+        $defaultvalues['completionscoreenabled' . $suffix] = !empty($defaultvalues[$completionscoreel]) ? 1 : 0;
+        if (empty($defaultvalues[$completionscoreel])) {
+            $defaultvalues[$completionscoreel] = 10000;
         }
 
         if (!isset($defaultvalues['gradepassingscore'])) {
             $defaultvalues['gradepassingscore'] = 0;
+        }
+
+        // The stored context id goes stale when a bank moves (5.0 upgrade, restore), so rebuild the
+        // "categoryid,contextid" option key from the category's current context.
+        if (!empty($defaultvalues['questioncategory'])) {
+            $categoryid = quizgame_get_category_id($defaultvalues['questioncategory']);
+            $contextid = $DB->get_field('question_categories', 'contextid', ['id' => $categoryid]);
+            if ($contextid) {
+                $defaultvalues['questioncategory'] = $categoryid . ',' . $contextid;
+            }
         }
     }
 }

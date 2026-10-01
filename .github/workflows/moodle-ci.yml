@@ -8,7 +8,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # PostgreSQL 17 / MariaDB 11.4 are the Moodle 5.3 minimums and also run 5.1 and 5.2.
+        image: postgres:17
         env:
           POSTGRES_USER: 'postgres'
           POSTGRES_HOST_AUTH_METHOD: 'trust'
@@ -16,34 +17,39 @@ jobs:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
       mariadb:
-        image: mariadb:10.11
+        image: mariadb:11.4
         env:
           MYSQL_USER: 'root'
           MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+          MYSQL_CHARACTER_SET_SERVER: "utf8mb4"
+          MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 3
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval 10s --health-timeout 5s --health-retries 3
 
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Moodle 5.2
+          # Moodle 5.3. Its MOODLE_503_STABLE branch does not exist until 5.3.0 is released
+          # (due 2026-10-05); until then main is 5.3. Switch these rows to MOODLE_503_STABLE then.
+          - php: 8.4
+            moodle-branch: main
+            database: pgsql
           - php: 8.3
+            moodle-branch: main
+            database: mariadb
+
+          # Moodle 5.2 (PHP 8.3 minimum). amd/build is built with this branch's toolchain.
+          - php: 8.4
             moodle-branch: MOODLE_502_STABLE
             database: pgsql
           - php: 8.3
             moodle-branch: MOODLE_502_STABLE
             database: mariadb
 
-          # Moodle 5.1
+          # Moodle 5.1.
           - php: 8.3
-            moodle-branch: MOODLE_501_STABLE
-            database: pgsql
-          - php: 8.3
-            moodle-branch: MOODLE_501_STABLE
-            database: mariadb
-          - php: 8.2
             moodle-branch: MOODLE_501_STABLE
             database: pgsql
           - php: 8.2
@@ -93,7 +99,7 @@ jobs:
 
       - name: Moodle PHPDoc Checker
         if: ${{ always() }}
-        run: moodle-plugin-ci phpdoc
+        run: moodle-plugin-ci phpdoc --max-warnings 0
 
       - name: Validating
         if: ${{ always() }}
@@ -108,13 +114,14 @@ jobs:
         run: moodle-plugin-ci mustache
 
       - name: Grunt
-        if: ${{ always() }}
+        # Each branch's toolchain minifies differently, so the committed amd/build matches one branch only.
+        if: ${{ always() && matrix.moodle-branch == 'MOODLE_502_STABLE' }}
         run: moodle-plugin-ci grunt --max-lint-warnings 0
 
       - name: PHPUnit tests
         if: ${{ always() }}
-        run: moodle-plugin-ci phpunit
+        run: moodle-plugin-ci phpunit --fail-on-warning
 
       - name: Behat features
         if: ${{ always() }}
-        run: moodle-plugin-ci behat --profile chrome
+        run: moodle-plugin-ci behat --profile chrome --scss-deprecations

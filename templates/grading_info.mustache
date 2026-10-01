@@ -1,0 +1,39 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_quizgame/grading_info
+
+    Tells the player how their game score becomes a grade, and their best score so far.
+
+    Context variables required for this template:
+    * targetinfo - Sentence about the score needed for the full grade (plain text).
+    * hasbestscore - Whether the player has a recorded score.
+    * bestscoreinfo - Sentence with the player's best score (plain text).
+
+    Example context (json):
+    {
+        "targetinfo": "Reach a game score of 10000 to earn the full grade of 100. Lower scores earn a proportional grade.",
+        "hasbestscore": true,
+        "bestscoreinfo": "Your best score so far: 7500"
+    }
+}}
+<div class="mod_quizgame-gradinginfo alert alert-info" data-region="mod_quizgame-gradinginfo">
+    <p class="mb-0">{{targetinfo}}</p>
+    {{#hasbestscore}}
+        <p class="mb-0 mt-2">{{bestscoreinfo}}</p>
+    {{/hasbestscore}}
+</div>

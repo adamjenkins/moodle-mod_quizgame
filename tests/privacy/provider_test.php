@@ -35,8 +35,8 @@ use mod_quizgame\privacy\provider;
  * @copyright  2018 Stephen Bourget
  * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \mod_quizgame\privacy\provider
  */
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\privacy\provider::class)]
 final class provider_test extends \core_privacy\tests\provider_testcase {
     /** @var stdClass The student object. */
     protected $student;

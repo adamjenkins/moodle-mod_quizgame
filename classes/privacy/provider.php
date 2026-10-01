@@ -140,23 +140,7 @@ class provider implements
         $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
         [$userinsql, $userinparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
 
-        $quizgamescoreswhere = "quizgameid = :instanceid AND userid {$userinsql}";
         $userinstanceparams = $userinparams + ['instanceid' => $instanceid];
-
-        $scoresobject = $DB->get_recordset_select('quizgame_scores', $quizgamescoreswhere, $userinstanceparams, 'id', 'id');
-        $scores = [];
-
-        foreach ($scoresobject as $score) {
-            $scores[] = $score->id;
-        }
-
-        $scoresobject->close();
-
-        if (!$scores) {
-            return;
-        }
-
-        [$insql, $inparams] = $DB->get_in_or_equal($scores, SQL_PARAMS_NAMED);
 
         // Now delete all user related scores.
         $deletewhere = "quizgameid = :instanceid AND userid {$userinsql}";

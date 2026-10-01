@@ -27,7 +27,8 @@
 namespace mod_quizgame;
 
 /**
- * Genarator tests class for mod_quizgame.
+ * Generator tests class for mod_quizgame.
+ *
  *
  * @package    mod_quizgame
  * @category   test
@@ -35,11 +36,12 @@ namespace mod_quizgame;
  * @copyright  2026 Adam Jenkins <hama.history@gmail.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class mod_quizgame_generator_testcase extends \advanced_testcase {
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame_generator::class)]
+final class generator_test extends \advanced_testcase {
     /**
      * test creating module instance.
      */
-    public function test_create_instance() {
+    public function test_create_instance(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -62,7 +64,7 @@ class mod_quizgame_generator_testcase extends \advanced_testcase {
     /**
      * test creating module content.
      */
-    public function test_create_content() {
+    public function test_create_content(): void {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();

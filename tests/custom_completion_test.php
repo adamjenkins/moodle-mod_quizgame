@@ -45,8 +45,8 @@ require_once($CFG->libdir . '/completionlib.php');
  * @copyright 2021 Stephen Bourget
  * @copyright 2026 Adam Jenkins <hama.history@gmail.com>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers    \mod_quizgame\completion\custom_completion
  */
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\completion\custom_completion::class)]
 final class custom_completion_test extends advanced_testcase {
     /**
      * Data provider for get_state().
@@ -73,13 +73,13 @@ final class custom_completion_test extends advanced_testcase {
     /**
      * Test for get_state().
      *
-     * @dataProvider get_state_provider
      * @param string $rule The custom completion rule.
      * @param int $available Whether this rule is available.
      * @param int $highscorecount The number of runs exceeding the high score.
      * @param int|null $status Expected status.
      * @param string|null $exception Expected exception.
      */
+    #[\PHPUnit\Framework\Attributes\DataProvider('get_state_provider')]
     public function test_get_state(string $rule, int $available, int $highscorecount, ?int $status, ?string $exception): void {
         global $DB;
 
@@ -97,15 +97,12 @@ final class custom_completion_test extends advanced_testcase {
         // Build a mock cm_info instance.
         $mockcminfo = $this->getMockBuilder(cm_info::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['__get'])
+            ->onlyMethods(['get_custom_data'])
             ->getMock();
 
-        // Mock the return of the magic getter method when fetching the cm_info object's customdata and instance values.
-        $mockcminfo->method('__get')
-            ->willReturnMap([
-                ['customdata', $customdataval],
-                ['instance', 1],
-            ]);
+        // Mock the return of the get_custom_data method when fetching the cm_info object's customdata.
+        $mockcminfo->method('get_custom_data')
+            ->willReturn($customdataval);
 
         // Mock the DB calls.
         $DB = $this->createMock(get_class($DB));
@@ -136,8 +133,9 @@ final class custom_completion_test extends advanced_testcase {
         // Build a mock cm_info instance.
         $mockcminfo = $this->getMockBuilder(cm_info::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['__get'])
+            ->onlyMethods(['get_custom_data'])
             ->getMock();
+        $mockcminfo->method('get_custom_data')->willReturn([]);
 
         // Instantiate a custom_completion object using the mocked cm_info.
         $customcompletion = new custom_completion($mockcminfo, 1);
@@ -189,10 +187,10 @@ final class custom_completion_test extends advanced_testcase {
     /**
      * Test for get_available_custom_rules().
      *
-     * @dataProvider get_available_custom_rules_provider
      * @param int $status
      * @param array $expected
      */
+    #[\PHPUnit\Framework\Attributes\DataProvider('get_available_custom_rules_provider')]
     public function test_get_available_custom_rules(int $status, array $expected): void {
         $customdataval = [
             'customcompletionrules' => [
@@ -203,13 +201,11 @@ final class custom_completion_test extends advanced_testcase {
         // Build a mock cm_info instance.
         $mockcminfo = $this->getMockBuilder(cm_info::class)
             ->disableOriginalConstructor()
-            ->onlyMethods(['__get'])
+            ->onlyMethods(['get_custom_data'])
             ->getMock();
 
-        // Mock the return of magic getter for the customdata attribute.
-        $mockcminfo->expects($this->any())
-            ->method('__get')
-            ->with('customdata')
+        // Mock the return of the get_custom_data method for the customdata attribute.
+        $mockcminfo->method('get_custom_data')
             ->willReturn($customdataval);
 
         $customcompletion = new custom_completion($mockcminfo, 1);
