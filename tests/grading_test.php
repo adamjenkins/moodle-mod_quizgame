@@ -39,6 +39,7 @@ require_once($CFG->libdir . '/gradelib.php');
 #[\PHPUnit\Framework\Attributes\CoversFunction('quizgame_reset_userdata')]
 #[\PHPUnit\Framework\Attributes\CoversFunction('quizgame_delete_instance')]
 #[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame_renderer::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_quizgame\task\update_grades::class)]
 final class grading_test extends \advanced_testcase {
     /**
      * Fetch the grade item of a quizgame.
@@ -151,6 +152,35 @@ final class grading_test extends \advanced_testcase {
 
         $this->assertTrue(quizgame_delete_instance($quizgame->id));
         $this->assertFalse($this->get_grade_item($quizgame));
+    }
+
+    /**
+     * The upgrade back-fill task creates missing grade items and pushes the best scores.
+     */
+    public function test_update_grades_task(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $quizgame = $this->getDataGenerator()->create_module('quizgame', [
+            'course' => $course->id,
+            'grade' => 100,
+            'gradepassingscore' => 10000,
+        ]);
+        // A site from before the gradebook integration: scores, but no grade item.
+        $DB->insert_record('quizgame_scores', (object) [
+            'quizgameid' => $quizgame->id,
+            'userid' => $student->id,
+            'score' => 5000,
+            'timecreated' => time(),
+        ]);
+        $DB->delete_records('grade_items', ['itemmodule' => 'quizgame', 'iteminstance' => $quizgame->id]);
+        $this->assertFalse($this->get_grade_item($quizgame));
+
+        (new \mod_quizgame\task\update_grades())->execute();
+
+        $this->assertNotEmpty($this->get_grade_item($quizgame));
+        $this->assertEquals(50.0, $this->get_user_grade($quizgame, $student->id));
     }
 
     /**
