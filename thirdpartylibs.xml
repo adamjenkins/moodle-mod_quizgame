@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <libraries>
   <library>
-    <location>lib/audiowide</location>
+    <location>fonts</location>
     <name>Audiowide Font</name>
     <version>14</version>
     <license>SIL OFL</license>

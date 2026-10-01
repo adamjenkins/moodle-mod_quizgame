@@ -27,16 +27,12 @@
 require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
 require_once($CFG->dirroot . '/mod/quizgame/classes/table_scores.php');
 
-$id = optional_param('id', 0, PARAM_INT); // The Quizgame instance.
+$id = required_param('id', PARAM_INT); // The Quizgame instance.
 $download = optional_param('download', '', PARAM_ALPHA);
 
-if ($id) {
-    $quizgame  = $DB->get_record('quizgame', ['id' => $id], '*', MUST_EXIST);
-    $course     = $DB->get_record('course', ['id' => $quizgame->course], '*', MUST_EXIST);
-    $cm         = get_coursemodule_from_instance('quizgame', $quizgame->id, $course->id, false, MUST_EXIST);
-} else {
-    error('You must specify a course_module ID or an instance ID');
-}
+$quizgame = $DB->get_record('quizgame', ['id' => $id], '*', MUST_EXIST);
+$course = $DB->get_record('course', ['id' => $quizgame->course], '*', MUST_EXIST);
+$cm = get_coursemodule_from_instance('quizgame', $quizgame->id, $course->id, false, MUST_EXIST);
 
 require_login($course, true, $cm);
 $context = context_module::instance($cm->id);

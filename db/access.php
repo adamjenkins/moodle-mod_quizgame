@@ -63,8 +63,20 @@ $capabilities = [
     'mod/quizgame:view' => [
         'captype' => 'read',
         'contextlevel' => CONTEXT_MODULE,
-        'legacy' => [
+        'archetypes' => [
             'guest' => CAP_ALLOW,
+            'student' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
+    // Recording a score writes a grade, so it is a write capability that guests never get.
+    'mod/quizgame:play' => [
+        'captype' => 'write',
+        'contextlevel' => CONTEXT_MODULE,
+        'archetypes' => [
             'student' => CAP_ALLOW,
             'teacher' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,

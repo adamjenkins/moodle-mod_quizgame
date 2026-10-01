@@ -124,8 +124,9 @@ function quizgame_delete_instance($id) {
         return false;
     }
 
-    $DB->delete_records('quizgame', ['id' => $quizgame->id]);
     $DB->delete_records('quizgame_scores', ['quizgameid' => $quizgame->id]);
+    quizgame_grade_item_delete($quizgame);
+    $DB->delete_records('quizgame', ['id' => $quizgame->id]);
 
     return true;
 }
@@ -205,117 +206,7 @@ function quizgame_user_complete($course, $user, $mod, $quizgame) {
     }
 }
 
-/**
- * Obtains the automatic completion state for this quizgame based on any conditions
- * in quizgame settings.
- *
- * @param object $course Course
- * @param object $cm Course-module
- * @param int $userid User ID
- * @param bool $type Type of comparison (or/and; can be used as return value if no conditions)
- * @return bool True if completed, false if not. (If no conditions, then return
- *   value depends on comparison type)
- */
-function quizgame_get_completion_state($course, $cm, $userid, $type) {
-    global $DB;
-
-    // Get quizgame details.
-    if (!($quizgame = $DB->get_record('quizgame', ['id' => $cm->instance]))) {
-        throw new Exception("Can't find quizgame {$cm->instance}");
-    }
-
-    // Default return value.
-    $result = $type;
-    if ($quizgame->completionscore) {
-        $where = ' quizgameid = :quizgameid AND userid = :userid AND score >= :score';
-        $params = [
-            'quizgameid' => $quizgame->id,
-            'userid' => $userid,
-            'score' => $quizgame->completionscore,
-        ];
-        $value = $DB->count_records_select('quizgame_scores', $where, $params) > 0;
-        if ($type == COMPLETION_AND) {
-            $result = $result && $value;
-        } else {
-            $result = $result || $value;
-        }
-    }
-
-    return $result;
-}
-
-/**
- * Given a course and a time, this module should find recent activity
- * that has occurred in quizgame activities and print it out.
- * Return true if there was output, or false is there was none.
- *
- * @param stdClass $course The course record.
- * @param bool $viewfullnames boolean to determine whether to show full names or not
- * @param int $timestart the time the rendering started
- * @return boolean True if the activity was printed, false otherwise
- */
-function quizgame_print_recent_activity($course, $viewfullnames, $timestart) {
-    return false;  // True if anything was printed, otherwise false.
-}
-
-/**
- * Prepares the recent activity data
- *
- * This callback function is supposed to populate the passed array with
- * custom activity records. These records are then rendered into HTML via
- * {quizgame_print_recent_mod_activity()}.
- *
- * @param array $activities sequentially indexed array of objects with the 'cmid' property
- * @param int $index the index in the $activities to use for the next record
- * @param int $timestart append activity since this time
- * @param int $courseid the id of the course we produce the report for
- * @param int $cmid course module id
- * @param int $userid check for a particular user's activity only, defaults to 0 (all users)
- * @param int $groupid check for a particular group's activity only, defaults to 0 (all groups)
- * @return void adds items into $activities and increases $index
- */
-function quizgame_get_recent_mod_activity(&$activities, &$index, $timestart, $courseid, $cmid, $userid = 0, $groupid = 0) {
-}
-
-/**
- * Prints single activity item prepared by quizgame_get_recent_mod_activity
- *
- * @see quizgame_get_recent_mod_activity()
- *
- * @param object $activity The activity object of the quizgame
- * @param int $courseid The id of the course the quizgame resides in
- * @param bool $detail not used, but required for compatibilty with other modules
- * @param int $modnames not used, but required for compatibilty with other modules
- * @param bool $viewfullnames boolean to determine whether to show full names or not
- * @return void
- */
-function quizgame_print_recent_mod_activity($activity, $courseid, $detail, $modnames, $viewfullnames) {
-}
-
-/**
- * Function to be run periodically according to the moodle cron
- * This function searches for things that need to be done, such
- * as sending out mail, toggling flags etc ...
- *
- * @return boolean
- * @todo Finish documenting this function
- **/
-function quizgame_cron() {
-    return true;
-}
-
-/**
- * Returns all other caps used in the module
- *
- * e.g. ['moodle/site:accessallgroups'];
- * @return array of capabilities used in the module
- */
-function quizgame_get_extra_capabilities() {
-    return [];
-}
-
 // Gradebook API.
-// TODO: Highscore entries in gradebook.
 
 /**
  * Is a given scale used by the instance of quizgame?
@@ -348,8 +239,9 @@ function quizgame_scale_used($quizgameid, $scaleid) {
  * @return boolean true if the scale is used by any quizgame instance
  */
 function quizgame_scale_used_anywhere($scaleid) {
+    global $DB;
 
-    return false;
+    return $scaleid && $DB->record_exists('quizgame', ['grade' => -$scaleid]);
 }
 
 /**
@@ -359,7 +251,7 @@ function quizgame_scale_used_anywhere($scaleid) {
  *
  * @param stdClass $quizgame instance object with extra cmidnumber and modname property
  * @param mixed $grades optional array/object of grade(s); 'reset' means reset grades in gradebook
- * @return void
+ * @return int 0 if ok, error code otherwise
  */
 function quizgame_grade_item_update(stdClass $quizgame, $grades = null) {
     global $CFG;
@@ -367,18 +259,38 @@ function quizgame_grade_item_update(stdClass $quizgame, $grades = null) {
 
     $item = [];
     $item['itemname'] = clean_param($quizgame->name, PARAM_NOTAGS);
-    $item['gradetype'] = GRADE_TYPE_VALUE;
-    $item['grademax']  = $quizgame->grade;
-    $item['grademin']  = 0;
-
-    if (isset($quizgame->gradecat)) {
-        $item['categoryid'] = $quizgame->gradecat;
-    }
-    if (isset($quizgame->gradepass) && $quizgame->gradepass !== '') {
-        $item['gradepass'] = $quizgame->gradepass;
+    if (isset($quizgame->cmidnumber)) {
+        $item['idnumber'] = $quizgame->cmidnumber;
     }
 
-    grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, null, $item);
+    if ($quizgame->grade > 0) {
+        $item['gradetype'] = GRADE_TYPE_VALUE;
+        $item['grademax']  = $quizgame->grade;
+        $item['grademin']  = 0;
+    } else {
+        // Scales are refused by the settings form: a game score has no meaningful scale mapping.
+        $item['gradetype'] = GRADE_TYPE_NONE;
+    }
+
+    if ($grades === 'reset') {
+        $item['reset'] = true;
+        $grades = null;
+    }
+
+    return grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, $grades, $item);
+}
+
+/**
+ * Delete the grade item of a quizgame instance.
+ *
+ * @param stdClass $quizgame The quizgame record
+ * @return int 0 if ok, error code otherwise
+ */
+function quizgame_grade_item_delete(stdClass $quizgame) {
+    global $CFG;
+    require_once($CFG->libdir . '/gradelib.php');
+
+    return grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, null, ['deleted' => 1]);
 }
 
 /**
@@ -387,7 +299,7 @@ function quizgame_grade_item_update(stdClass $quizgame, $grades = null) {
  * When $target > 0 the score is scaled proportionally: reaching $target game
  * points earns the full $grademax; going past it is still capped at $grademax.
  * When $target == 0 the raw game score is returned unchanged (legacy behaviour —
- * Moodle's grademax cap still applies in the gradebook).
+ * Moodle's grademax cap still applies in the gradebook). Negative scores give 0.
  *
  * @param float $gamescore The player's best game score.
  * @param float $target gradepassingscore setting (0 = no scaling).
@@ -395,6 +307,7 @@ function quizgame_grade_item_update(stdClass $quizgame, $grades = null) {
  * @return float
  */
 function quizgame_scale_game_score(float $gamescore, float $target, float $grademax): float {
+    $gamescore = max(0.0, $gamescore);
     if ($target > 0.0) {
         return min($gamescore / $target * $grademax, $grademax);
     }
@@ -408,11 +321,17 @@ function quizgame_scale_game_score(float $gamescore, float $target, float $grade
  *
  * @param stdClass $quizgame instance object with extra cmidnumber and modname property
  * @param int $userid update grade of specific user only, 0 means all participants
+ * @param bool $nullifnone If a single user has no score, clear their grade rather than leave it
  * @return void
  */
-function quizgame_update_grades(stdClass $quizgame, $userid = 0) {
+function quizgame_update_grades(stdClass $quizgame, $userid = 0, $nullifnone = true) {
     global $CFG, $DB;
     require_once($CFG->libdir . '/gradelib.php');
+
+    if ($quizgame->grade <= 0) {
+        quizgame_grade_item_update($quizgame);
+        return;
+    }
 
     $target = !empty($quizgame->gradepassingscore) ? (float) $quizgame->gradepassingscore : 0.0;
 
@@ -421,10 +340,13 @@ function quizgame_update_grades(stdClass $quizgame, $userid = 0) {
             'SELECT MAX(score) FROM {quizgame_scores} WHERE quizgameid = :qid AND userid = :uid',
             ['qid' => $quizgame->id, 'uid' => $userid]
         );
+        $grade = new stdClass();
+        $grade->userid = $userid;
         if ($maxscore !== null && $maxscore !== false) {
-            $grade = new stdClass();
-            $grade->userid = $userid;
             $grade->rawgrade = quizgame_scale_game_score((float) $maxscore, $target, (float) $quizgame->grade);
+            $grades = [$userid => $grade];
+        } else if ($nullifnone) {
+            $grade->rawgrade = null;
             $grades = [$userid => $grade];
         } else {
             $grades = [];
@@ -443,46 +365,10 @@ function quizgame_update_grades(stdClass $quizgame, $userid = 0) {
         }
     }
 
-    grade_update('mod/quizgame', $quizgame->course, 'mod', 'quizgame', $quizgame->id, 0, $grades);
+    quizgame_grade_item_update($quizgame, $grades);
 }
 
 // File API.
-
-/**
- * Returns the lists of all browsable file areas within the given module context
- *
- * The file area 'intro' for the activity introduction field is added automatically
- * by {file_browser::get_file_info_context_module()}
- *
- * @param stdClass $course
- * @param stdClass $cm
- * @param stdClass $context
- * @return array of [(string)filearea] => (string)description
- */
-function quizgame_get_file_areas($course, $cm, $context) {
-    return [];
-}
-
-/**
- * File browsing support for quizgame file areas
- *
- * @package mod_quizgame
- * @category files
- *
- * @param file_browser $browser
- * @param array $areas
- * @param stdClass $course
- * @param stdClass $cm
- * @param stdClass $context
- * @param string $filearea
- * @param int $itemid
- * @param string $filepath
- * @param string $filename
- * @return file_info instance or null if not found
- */
-function quizgame_get_file_info($browser, $areas, $course, $cm, $context, $filearea, $itemid, $filepath, $filename) {
-    return null;
-}
 
 /**
  * Serves the files from the quizgame file areas
@@ -510,18 +396,6 @@ function quizgame_pluginfile($course, $cm, $context, $filearea, array $args, $fo
 }
 
 // Navigation API.
-
-/**
- * Extends the settings navigation with the quizgame settings
- *
- * This function is called when the context for the page is a quizgame module. This is not called by AJAX
- * so it is safe to rely on the $PAGE.
- *
- * @param settings_navigation $settingsnav {settings_navigation}
- * @param ?navigation_node $quizgamenode {navigation_node}
- */
-function quizgame_extend_settings_navigation(settings_navigation $settingsnav, ?navigation_node $quizgamenode = null) {
-}
 
 /**
  * Implementation of the function for printing the form elements that control
@@ -552,14 +426,19 @@ function quizgame_reset_course_form_defaults($course) {
  */
 function quizgame_reset_userdata($data) {
     global $DB;
-        $componentstr = get_string('modulenameplural', 'quizgame');
-        $status = [];
+
+    $componentstr = get_string('modulenameplural', 'quizgame');
+    $status = [];
 
     if (!empty($data->reset_quizgame_scores)) {
         $quizgameids = $DB->get_fieldset_select('quizgame', 'id', 'course = ?', [$data->courseid]);
         if ($quizgameids) {
             [$insql, $inparams] = $DB->get_in_or_equal($quizgameids);
             $DB->delete_records_select('quizgame_scores', "quizgameid $insql", $inparams);
+        }
+        // Grades come from the scores, so they go too (unless the whole gradebook is reset anyway).
+        if (empty($data->reset_gradebook_grades)) {
+            quizgame_reset_gradebook($data->courseid);
         }
         $status[] = ['component' => $componentstr, 'item' => get_string('removescores', 'quizgame'), 'error' => false];
     }
@@ -574,7 +453,6 @@ function quizgame_reset_userdata($data) {
  * @param string $type (Optional)
  */
 function quizgame_reset_gradebook($courseid, $type = '') {
-    // TODO: LOOK AT AFTER GRADES ARE IMPLEMENTED!
     global $DB;
 
     $sql = "SELECT g.*, cm.idnumber as cmidnumber, g.course as courseid

@@ -95,7 +95,9 @@ class table_scores extends table_sql {
             return 'UNKNOWN';
         }
 
-        $this->userfullnames[$record->userid] = fullname($user[$record->userid]);
+        $fullname = fullname($user[$record->userid]);
+        // Escape for the HTML table; downloads get the plain name.
+        $this->userfullnames[$record->userid] = $this->is_downloading() ? $fullname : s($fullname);
         return $this->userfullnames[$record->userid];
     }
 }

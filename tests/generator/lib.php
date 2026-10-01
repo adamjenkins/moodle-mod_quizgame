@@ -31,8 +31,22 @@ class mod_quizgame_generator extends testing_module_generator {
      */
     public function create_instance($record = null, ?array $options = null) {
 
+        global $DB;
+
+        $record = (array)$record;
+        // Behat passes the question category by name; store it as "categoryid,contextid" like the form does.
+        if (!empty($record['questioncategory']) && !preg_match('/^\d+(,\d+)?$/', (string) $record['questioncategory'])) {
+            $category = $DB->get_record(
+                'question_categories',
+                ['name' => $record['questioncategory']],
+                'id, contextid',
+                MUST_EXIST
+            );
+            $record['questioncategory'] = $category->id . ',' . $category->contextid;
+        }
+
         // Add default values for quizgame.
-        $record = (array)$record + [
+        $record = $record + [
             'questioncategory' => 0,
             'questioncategorysubcats' => 0,
             'grade' => 100,

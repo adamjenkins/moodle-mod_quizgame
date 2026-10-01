@@ -56,47 +56,61 @@ class restore_quizgame_activity_structure_step extends restore_activity_structur
      * @param StdClass $data
      */
     protected function process_quizgame($data) {
-        global $DB;
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
         $data = (object)$data;
         $oldid = $data->id;
-        $oldcourse = $data->course;
         $data->course = $this->get_courseid();
 
-        // Map the category in the QB.
-        // Data is stored either as id / context or just id.
-        $category = explode(",", $data->questioncategory);
-        if (count($category) > 1) {
-            // Question category here was stored as id,context.
-            // Get the new mapping to the category.
-            $newcat = $this->get_mappingid('question_category', $category[0]);
-            // Now get the context for this category.
-            $newcontext = $DB->get_field('question_categories', 'contextid', ['id' => $newcat]);
-            // Assemble the field data.
-            if (!empty($newcat)) {
-                $data->questioncategory = implode(',', [$newcat, $newcontext]);
-            } else {
-                if (!$this->task->is_samesite() || $data->course != $oldcourse) {
-                    // We cannot map to the question category.
-                    // They were not included in the backup since they were at a higher context.
-                    // This can happen when we are backing up the activity alone and trying to restore it elsewhere.
-                    $this->log('question category ' . $category[0] . ' was associated with the quizgame ' .
-                        $data->id . ' but cannot actually be used as it is not available in this backup. ' .
-                        'The category needs to be re-selected.', backup::LOG_INFO);
-
-                    // Remove the old data.
-                    $data->questioncategory = "";
-                }
-            }
+        // Map the question category. The value is "categoryid,contextid" (older backups: the id alone).
+        // Only the id is stored: the context id is still temporary at this point of the restore, and the
+        // settings form rebuilds it from the category.
+        $oldcategoryid = quizgame_get_category_id($data->questioncategory);
+        $newcategoryid = $oldcategoryid ? $this->get_mappingid('question_category', $oldcategoryid) : false;
+        if ($newcategoryid) {
+            $data->questioncategory = (string) $newcategoryid;
+        } else if ($oldcategoryid && $this->task->is_samesite() && $this->category_usable($oldcategoryid, $data->course)) {
+            // The bank was not in the backup but is on this site and usable here, so it still applies.
+            $data->questioncategory = (string) $oldcategoryid;
         } else {
-            // The qustion category was just stored as an ID, so find the new mapping.
-            $data->questioncategory = $this->get_mappingid('question_category', $category);
+            if ($oldcategoryid) {
+                $this->log('question category ' . $oldcategoryid . ' was associated with the quizgame ' .
+                    $oldid . ' but cannot be used as it is not available in this backup or course. ' .
+                    'The category needs to be re-selected.', backup::LOG_INFO);
+            }
+            $data->questioncategory = '';
         }
+
         // Insert the quizgame record.
         $newitemid = $DB->insert_record('quizgame', $data);
         // Immediately after inserting "activity" record, call this.
         $this->apply_activity_instance($newitemid);
         $this->set_mapping('quizgame', $oldid, $newitemid);
+    }
+
+    /**
+     * Whether a question category that was not in the backup may be kept for the restored game.
+     *
+     * Its bank must qualify for the target course, and a bank in another course (a shared bank)
+     * only if the user restoring may use its questions, as in the settings form. The backup file
+     * is untrusted input, so the category id in it proves nothing.
+     *
+     * @param int $categoryid question category id from the backup
+     * @param int $courseid target course id
+     * @return bool
+     */
+    protected function category_usable(int $categoryid, int $courseid): bool {
+        global $DB;
+
+        if (!quizgame_category_allowed($categoryid, $courseid)) {
+            return false;
+        }
+        $context = context::instance_by_id($DB->get_field('question_categories', 'contextid', ['id' => $categoryid]));
+        if ($context->get_course_context()->instanceid == $courseid) {
+            return true;
+        }
+        return has_capability('moodle/question:useall', $context, $this->task->get_userid());
     }
 
     /**

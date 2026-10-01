@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Steps definitions related to mod_quiz.
+ * Steps definitions related to mod_quizgame.
  *
  * @package   mod_quizgame
  * @category  test

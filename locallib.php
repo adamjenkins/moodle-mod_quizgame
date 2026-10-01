@@ -32,16 +32,118 @@ require_once($CFG->libdir . '/questionlib.php');
 require_once($CFG->dirroot . '/lib/completionlib.php');
 
 /**
- * Function to prepare strings to be printed out as JSON.
+ * Turn question or answer text into plain text for the game canvas.
  *
- * @param stdClass $string The string to be cleaned
- * @return string The string, ready to be printed as JSON
+ * Filters run first (multilang, etc.), then tags are stripped and entities decoded, because the
+ * canvas draws text literally.
+ *
+ * @param string $text The text to be cleaned
+ * @param int $format The text format (FORMAT_*)
+ * @param context $context The context used for filtering
+ * @return string Plain text on a single line
  */
-function quizgame_cleanup($string) {
-    $string = strip_tags($string);
-    $string = preg_replace('/[\n\r]/', ' ', $string);
-    return $string;
+function quizgame_cleanup($text, $format, $context) {
+    $text = format_text((string) $text, $format, ['context' => $context, 'para' => false]);
+    $text = core_text::entities_to_utf8(strip_tags($text));
+    return trim(preg_replace('/\s+/u', ' ', $text));
 }
+
+/**
+ * Get the question category id from the stored questioncategory value.
+ *
+ * The value is stored as "categoryid,contextid" by the settings form; older rows may hold the id alone.
+ *
+ * @param string|null $stored The quizgame.questioncategory value
+ * @return int The category id, 0 if none
+ */
+function quizgame_get_category_id($stored) {
+    return (int) explode(',', (string) $stored)[0];
+}
+
+/**
+ * Whether a question category may feed a quizgame in the given course.
+ *
+ * Qualifying categories belong to a question bank activity in the same course, or to a shared
+ * question bank (an activity that publishes questions) in another course. Private banks of other
+ * courses' activities (e.g. a quiz's own questions) never qualify. This is checked when the game
+ * is rendered; the settings form and restore additionally require the user to be allowed to use
+ * the questions of a bank in another course.
+ *
+ * @param int $categoryid The question category id
+ * @param int $courseid The course the quizgame belongs to
+ * @return bool
+ */
+function quizgame_category_allowed($categoryid, $courseid) {
+    global $DB;
+
+    if (empty($categoryid)) {
+        return false;
+    }
+    $contextid = $DB->get_field('question_categories', 'contextid', ['id' => $categoryid]);
+    if (!$contextid) {
+        return false;
+    }
+    $context = context::instance_by_id($contextid, IGNORE_MISSING);
+    if (!$context || $context->contextlevel != CONTEXT_MODULE) {
+        return false;
+    }
+    $cm = $DB->get_record_sql(
+        'SELECT cm.course, m.name AS modname
+           FROM {course_modules} cm
+           JOIN {modules} m ON m.id = cm.module
+          WHERE cm.id = :cmid',
+        ['cmid' => $context->instanceid]
+    );
+    if (!$cm) {
+        return false;
+    }
+    return $cm->course == $courseid || plugin_supports('mod', $cm->modname, FEATURE_PUBLISHES_QUESTIONS, false);
+}
+
+/**
+ * Load the questions a game plays: multichoice, truefalse and match questions of its category.
+ *
+ * Returns server-side question objects (with answers and fractions). Never send these to the
+ * browser; \mod_quizgame\local\game_session::prepare() builds the browser's copy.
+ *
+ * @param stdClass $quizgame The quizgame record
+ * @return stdClass[] Questions keyed by id
+ */
+function quizgame_get_game_questions($quizgame) {
+    $categoryid = quizgame_get_category_id($quizgame->questioncategory);
+    if (!quizgame_category_allowed($categoryid, $quizgame->course)) {
+        return [];
+    }
+    if (!empty($quizgame->questioncategorysubcats)) {
+        // Subcategories always share the parent's context, so the check above covers them.
+        $categoryids = array_values(question_categorylist($categoryid));
+    } else {
+        $categoryids = [$categoryid];
+    }
+    $questionids = question_bank::get_finder()->get_questions_from_categories($categoryids, '');
+    if (!$questionids) {
+        return [];
+    }
+    $questions = question_load_questions($questionids);
+    if (!is_array($questions)) {
+        // Question_load_questions() returns an error string when the options fail to load.
+        debugging('mod_quizgame: ' . $questions, DEBUG_DEVELOPER);
+        return [];
+    }
+    return array_filter($questions, function ($question) {
+        if ($question->qtype == 'match') {
+            // At least one real stem (subquestions without text are distractors).
+            foreach ($question->options->subquestions ?? [] as $sub) {
+                if ((string) $sub->questiontext !== '') {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return in_array($question->qtype, ['multichoice', 'truefalse']) && !empty($question->options->answers);
+    });
+}
+
 /**
  * Function to add the students score to the DB.
  * @param stdClass $quizgame

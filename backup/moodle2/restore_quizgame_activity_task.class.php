@@ -71,8 +71,8 @@ class restore_quizgame_activity_task extends restore_activity_task {
     public static function define_decode_rules() {
         $rules = [];
 
-        $rules[] = new restore_decode_rule('QUIZVENTUREVIEWBYID', '/mod/quizgame/view.php?id=$1', 'course_module');
-        $rules[] = new restore_decode_rule('QUIZVENTUREINDEX', '/mod/quizgame/index.php?id=$1', 'course');
+        $rules[] = new restore_decode_rule('QUIZGAMEVIEWBYID', '/mod/quizgame/view.php?id=$1', 'course_module');
+        $rules[] = new restore_decode_rule('QUIZGAMEINDEX', '/mod/quizgame/index.php?id=$1', 'course');
 
         return $rules;
     }
