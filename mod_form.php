@@ -30,6 +30,7 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/course/moodleform_mod.php');
 require_once($CFG->dirroot . '/lib/questionlib.php');
+require_once($CFG->dirroot . '/mod/quizgame/lib.php');
 require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
 /**
@@ -92,10 +93,152 @@ class mod_quizgame_mod_form extends moodleform_mod {
         $mform->addHelpButton('gradepassingscore', 'gradepassingscore', 'quizgame');
         $mform->hideIf('gradepassingscore', 'grade[modgrade_type]', 'neq', 'point');
 
+        $this->add_scoring_elements();
+        $this->add_sassy_elements();
+
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
         // Add standard buttons, common to all modules.
         $this->add_action_buttons();
+    }
+
+    /**
+     * Add the Scoring section: points for a correct hit, the wrong-hit penalty schedule, the miss penalty.
+     */
+    protected function add_scoring_elements(): void {
+        $mform = $this->_form;
+
+        $mform->addElement('header', 'scoringhdr', get_string('scoringhdr', 'quizgame'));
+
+        $mform->addElement('text', 'pointscorrect', get_string('pointscorrect', 'quizgame'), ['size' => '8']);
+        $mform->setType('pointscorrect', PARAM_INT);
+        $mform->setDefault('pointscorrect', 1000);
+        $mform->addHelpButton('pointscorrect', 'pointscorrect', 'quizgame');
+
+        $mform->addElement('text', 'wrongpenalties', get_string('wrongpenalties', 'quizgame'), ['size' => '32']);
+        $mform->setType('wrongpenalties', PARAM_TEXT);
+        $mform->setDefault('wrongpenalties', '300');
+        $mform->addHelpButton('wrongpenalties', 'wrongpenalties', 'quizgame');
+
+        $mform->addElement('text', 'misspenalty', get_string('misspenalty', 'quizgame'), ['size' => '8']);
+        $mform->setType('misspenalty', PARAM_INT);
+        $mform->setDefault('misspenalty', 0);
+        $mform->addHelpButton('misspenalty', 'misspenalty', 'quizgame');
+    }
+
+    /**
+     * Add the Sassy enhancements section. Every field but the master toggle is hidden while it is off.
+     */
+    protected function add_sassy_elements(): void {
+        $mform = $this->_form;
+
+        $mform->addElement('header', 'sassyhdr', get_string('sassyhdr', 'quizgame'));
+
+        $mform->addElement('advcheckbox', 'sassy', get_string('sassy', 'quizgame'), get_string('sassy_enable', 'quizgame'));
+        $mform->setDefault('sassy', 0);
+        $mform->addHelpButton('sassy', 'sassy', 'quizgame');
+
+        $sassyfields = [];
+        foreach (self::sassy_int_fields() as $field => $spec) {
+            $mform->addElement('text', $field, get_string($field, 'quizgame'), ['size' => '6']);
+            $mform->setType($field, PARAM_INT);
+            $mform->setDefault($field, $spec[0]);
+            $mform->addHelpButton($field, $field, 'quizgame');
+            $sassyfields[] = $field;
+            if ($field === 'sassyreadtime') {
+                // The penalty choice and selection order follow the tier settings.
+                $this->add_sassy_penalty_elements();
+                $sassyfields[] = 'sassypenaltiesgroup';
+                $sassyfields[] = 'sassyorder';
+            } else if ($field === 'sassydrainincrease') {
+                $mform->addElement('select', 'sassybossstyle', get_string('sassybossstyle', 'quizgame'), [
+                    0 => get_string('sassybossstyle_big', 'quizgame'),
+                    1 => get_string('sassybossstyle_swarm', 'quizgame'),
+                    2 => get_string('sassybossstyle_random', 'quizgame'),
+                ]);
+                $mform->setDefault('sassybossstyle', 0);
+                $mform->addHelpButton('sassybossstyle', 'sassybossstyle', 'quizgame');
+                $sassyfields[] = 'sassybossstyle';
+            }
+        }
+
+        foreach (['sassytaunts', 'sassydecoylabels', 'sassybosslines'] as $field) {
+            $mform->addElement('textarea', $field, get_string($field, 'quizgame'), ['rows' => 6, 'cols' => 60]);
+            $mform->setType($field, PARAM_TEXT);
+            // New instances start with the built-in list, so teachers can see and edit it.
+            $mform->setDefault($field, get_string('sassy_' . substr($field, 5) . '_default', 'quizgame'));
+            $mform->addHelpButton($field, $field, 'quizgame');
+            $sassyfields[] = $field;
+        }
+
+        foreach ($sassyfields as $field) {
+            $mform->hideIf($field, 'sassy', 'notchecked');
+        }
+        // The swarm size only matters when a swarm can happen.
+        $mform->hideIf('sassyswarmsize', 'sassybossstyle', 'eq', 0);
+    }
+
+    /**
+     * Add the enabled-penalty checkboxes (sassypenalty_<key>) and the selection-order select.
+     */
+    protected function add_sassy_penalty_elements(): void {
+        $mform = $this->_form;
+
+        $checkboxes = [];
+        foreach (quizgame_sassy_penalty_keys() as $key) {
+            $checkboxes[] = $mform->createElement(
+                'advcheckbox',
+                'sassypenalty_' . $key,
+                '',
+                get_string('sassypenalty_' . $key, 'quizgame')
+            );
+        }
+        $mform->addGroup($checkboxes, 'sassypenaltiesgroup', get_string('sassypenalties', 'quizgame'), '<br>', false);
+        $mform->addHelpButton('sassypenaltiesgroup', 'sassypenalties', 'quizgame');
+        foreach (quizgame_sassy_penalty_keys() as $key) {
+            $mform->setDefault('sassypenalty_' . $key, 1);
+        }
+
+        $mform->addElement('select', 'sassyorder', get_string('sassyorder', 'quizgame'), [
+            0 => get_string('sassyorder_inorder', 'quizgame'),
+            1 => get_string('sassyorder_random', 'quizgame'),
+        ]);
+        $mform->setDefault('sassyorder', 0);
+        $mform->addHelpButton('sassyorder', 'sassyorder', 'quizgame');
+    }
+
+    /**
+     * The whole-number Sassy settings, in form order, with their default and allowed range.
+     *
+     * @return array field name => [default, minimum, maximum]
+     */
+    protected static function sassy_int_fields(): array {
+        return [
+            'sassywrongtrigger' => [3, 1, 20],
+            'sassycleanneeded' => [1, 1, 10],
+            'sassybosslimit' => [4, 2, 20],
+            'sassyreadtime' => [5, 1, 30],
+            'sassymaxdecoys' => [3, 1, 10],
+            'sassydrainrate' => [100, 1, 10000],
+            'sassydrainincrease' => [50, 0, 500],
+            'sassyswarmsize' => [20, 5, 40],
+        ];
+    }
+
+    /**
+     * Add an error to $errors when a submitted whole number is missing or outside a range.
+     *
+     * @param array $errors errors keyed by element name, changed in place
+     * @param array $data submitted data
+     * @param string $field element name
+     * @param int $min smallest allowed value
+     * @param int $max largest allowed value
+     */
+    protected static function validate_range(array &$errors, array $data, string $field, int $min, int $max): void {
+        $value = $data[$field] ?? null;
+        if (!is_numeric($value) || (int) $value != $value || $value < $min || $value > $max) {
+            $errors[$field] = get_string('errorrange', 'quizgame', (object) ['min' => $min, 'max' => $max]);
+        }
     }
 
     /**
@@ -182,6 +325,33 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $errors['gradepassingscore'] = get_string('gradepassingscorenegative', 'quizgame');
         }
 
+        if (array_key_exists('pointscorrect', $data)) {
+            self::validate_range($errors, $data, 'pointscorrect', 1, 100000);
+        }
+        if (array_key_exists('misspenalty', $data)) {
+            self::validate_range($errors, $data, 'misspenalty', 0, 100000);
+        }
+        if (array_key_exists('wrongpenalties', $data)) {
+            $schedule = preg_replace('/\s+/', '', (string) $data['wrongpenalties']);
+            $values = explode(',', $schedule);
+            $valid = preg_match('/^\d+(,\d+)*$/', $schedule) && count($values) <= 20;
+            foreach ($values as $value) {
+                if (strlen($value) > 6 || (int) $value > 100000) {
+                    $valid = false;
+                }
+            }
+            if (!$valid) {
+                $errors['wrongpenalties'] = get_string('errorwrongpenalties', 'quizgame');
+            }
+        }
+
+        // The Sassy fields are hidden while the toggle is off, so only check them when it is on.
+        if (!empty($data['sassy'])) {
+            foreach (self::sassy_int_fields() as $field => [, $min, $max]) {
+                self::validate_range($errors, $data, $field, $min, $max);
+            }
+        }
+
         return $errors;
     }
 
@@ -264,6 +434,15 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         if (!isset($defaultvalues['gradepassingscore'])) {
             $defaultvalues['gradepassingscore'] = 0;
+        }
+
+        // The enabled Sassy penalties are stored as a comma-separated list of keys; the form shows a
+        // checkbox per key. New instances have no list yet and keep the checkboxes' defaults (all on).
+        if (isset($defaultvalues['sassypenalties'])) {
+            $enabled = array_filter(array_map('trim', explode(',', (string) $defaultvalues['sassypenalties'])));
+            foreach (quizgame_sassy_penalty_keys() as $key) {
+                $defaultvalues['sassypenalty_' . $key] = in_array($key, $enabled, true) ? 1 : 0;
+            }
         }
 
         // The stored context id goes stale when a bank moves (5.0 upgrade, restore), so rebuild the

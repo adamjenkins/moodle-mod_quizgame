@@ -169,4 +169,47 @@ final class backup_restore_test extends \advanced_testcase {
         $restored = $DB->get_record('quizgame', ['course' => $teachercourseid], '*', MUST_EXIST);
         $this->assertSame('', (string) $restored->questioncategory);
     }
+
+    /**
+     * Every scoring and Sassy setting survives a course backup and restore.
+     */
+    public function test_scoring_and_sassy_settings_restore(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $settings = [
+            'pointscorrect' => 2500,
+            'wrongpenalties' => '100,250,600',
+            'misspenalty' => 40,
+            'sassy' => 1,
+            'sassywrongtrigger' => 5,
+            'sassycleanneeded' => 2,
+            'sassybosslimit' => 6,
+            'sassyreadtime' => 9,
+            'sassypenalties' => 'decoys,drain',
+            'sassyorder' => 1,
+            'sassymaxdecoys' => 4,
+            'sassydrainrate' => 250,
+            'sassydrainincrease' => 75,
+            'sassybossstyle' => 2,
+            'sassyswarmsize' => 30,
+            'sassytaunts' => "Taunt one\nTaunt || two",
+            'sassydecoylabels' => "Nope\nNah",
+            'sassybosslines' => 'The end || Really',
+        ];
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
+        $category = $this->create_category($course);
+        $this->getDataGenerator()->create_module('quizgame', $settings + [
+            'course' => $course->id,
+            'questioncategory' => $category->id . ',' . $category->contextid,
+        ]);
+
+        $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
+
+        $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
+        foreach ($settings as $column => $value) {
+            $this->assertEquals($value, $restored->$column, $column);
+        }
+    }
 }

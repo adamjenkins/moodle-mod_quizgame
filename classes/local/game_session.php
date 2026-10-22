@@ -17,6 +17,8 @@
 namespace mod_quizgame\local;
 
 use context;
+use context_module;
+use core_text;
 use moodle_exception;
 use stdClass;
 
@@ -24,30 +26,142 @@ use stdClass;
  * Server-side state and scoring of a player's game.
  *
  * The browser only gets opaque answer tokens, never which answer is correct; every shot is
- * checked here and the score is kept in the user's session. See
- * dev-docs/moodle-mod_quizgame/server-scoring-design.md in the workspace for the rules.
+ * checked here and the score is kept in the user's session. The Sassy enhancements (cheater
+ * mode, its penalties and the boss finale) are decided here too; the browser only plays the
+ * effects it is sent. See dev-docs/forks/moodle-mod_quizgame/server-scoring-design.md and
+ * sassy-contract.md in the workspace for the rules.
  *
  * @package    mod_quizgame
+ * @copyright  2016 John Okely <john@moodle.com>
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class game_session {
-    /** @var int Points for a fully correct answer. */
+    /** @var int Points for a fully correct answer, when the record has no pointscorrect. */
     const POINTS = 1000;
 
-    /** @var int Points scale of the deflect penalty: (fraction - 0.5) x this. */
-    const DEFLECT_POINTS = 600;
+    /** @var int Highest return fire aggression level. */
+    const MAX_AGGRESSION = 5;
+
+    /** @var string[] Higher-tier penalties in severity order (the "In order" sequence). */
+    const PENALTIES = ['decoys', 'reversed', 'dodge', 'returnfire', 'drain'];
+
+    /** @var array Settings used when a quizgame record lacks the column (older records, tests). */
+    const DEFAULTS = [
+        'pointscorrect' => self::POINTS,
+        'wrongpenalties' => '300',
+        'misspenalty' => 0,
+        'sassy' => 0,
+        'sassywrongtrigger' => 3,
+        'sassycleanneeded' => 1,
+        'sassybosslimit' => 4,
+        'sassyreadtime' => 5,
+        'sassypenalties' => 'decoys,reversed,dodge,returnfire,drain',
+        'sassyorder' => 0,
+        'sassymaxdecoys' => 3,
+        'sassydrainrate' => 100,
+        'sassydrainincrease' => 50,
+        'sassybossstyle' => 0,
+        'sassyswarmsize' => 20,
+    ];
+
+    /** @var array Allowed [minimum, maximum] of the whole-number Sassy settings (as in the settings form). */
+    const INT_RANGES = [
+        'sassywrongtrigger' => [1, 20],
+        'sassycleanneeded' => [1, 10],
+        'sassybosslimit' => [2, 20],
+        'sassyreadtime' => [1, 30],
+        'sassymaxdecoys' => [1, 10],
+        'sassydrainrate' => [1, 10000],
+        'sassydrainincrease' => [0, 500],
+        'sassyswarmsize' => [5, 40],
+    ];
 
     /** @var stdClass The quizgame record. */
     protected $quizgame;
+
+    /** @var context|null The quizgame module context, computed when first needed. */
+    protected $context;
 
     /**
      * Constructor.
      *
      * @param stdClass $quizgame The quizgame record
+     * @param context|null $context The quizgame module context (computed from the course module when null)
      */
-    public function __construct(stdClass $quizgame) {
+    public function __construct(stdClass $quizgame, ?context $context = null) {
         $this->quizgame = $quizgame;
+        $this->context = $context;
+    }
+
+    /**
+     * The current time; tests override it to control the clock.
+     *
+     * @return float seconds since the epoch
+     */
+    protected function now(): float {
+        return microtime(true);
+    }
+
+    /**
+     * The quizgame module context, used for filtering texts.
+     *
+     * @return context
+     */
+    protected function context(): context {
+        if ($this->context === null) {
+            if (!empty($this->quizgame->cmid)) {
+                $cmid = (int) $this->quizgame->cmid;
+            } else {
+                $cmid = get_coursemodule_from_instance('quizgame', $this->quizgame->id, 0, false, MUST_EXIST)->id;
+            }
+            $this->context = context_module::instance($cmid);
+        }
+        return $this->context;
+    }
+
+    /**
+     * An activity setting, or its default when the record has no such column.
+     *
+     * @param string $name column name, a key of DEFAULTS
+     * @return mixed
+     */
+    protected function setting(string $name) {
+        if (isset($this->quizgame->$name)) {
+            return $this->quizgame->$name;
+        }
+        return self::DEFAULTS[$name];
+    }
+
+    /**
+     * A whole-number Sassy setting, kept within the range the settings form allows.
+     *
+     * The form only checks these while Sassy is on, so a value saved while it was off may be out of range.
+     *
+     * @param string $name column name, a key of INT_RANGES
+     * @return int
+     */
+    protected function int_setting(string $name): int {
+        [$min, $max] = self::INT_RANGES[$name];
+        return min($max, max($min, (int) $this->setting($name)));
+    }
+
+    /**
+     * Points for a correct hit (fraction 1), which is also the per-second score cap.
+     *
+     * @return int
+     */
+    public function points_correct(): int {
+        return max(0, (int) $this->setting('pointscorrect'));
+    }
+
+    /**
+     * Whether the Sassy enhancements are on for this activity.
+     *
+     * @return bool
+     */
+    protected function sassy(): bool {
+        return !empty($this->setting('sassy'));
     }
 
     /**
@@ -73,6 +187,79 @@ class game_session {
     }
 
     /**
+     * The current attempt, with any key missing (an attempt kept by an older version) filled in.
+     *
+     * Only call while an attempt exists.
+     *
+     * @return array Reference to the attempt array
+     */
+    protected function &attempt(): array {
+        $data = &$this->data();
+        $data['attempt'] += $this->new_attempt();
+        return $data['attempt'];
+    }
+
+    /**
+     * The state of a newly started game.
+     *
+     * @return array
+     */
+    protected function new_attempt(): array {
+        return [
+            'started' => time(),
+            'score' => 0.0,
+            'level' => 0,
+            'levelopened' => 0.0,
+            'leveltime' => 0.0,
+            'current' => null,
+            'closed' => true,
+            'completed' => false,
+            'shot' => [],
+            'matched' => [],
+            'roundopened' => [],
+            // Wrong-hit schedule and Sassy enhancements.
+            'levelwrong' => 0,
+            'wrongstreak' => 0,
+            'cheater' => false,
+            'cleanstreak' => 0,
+            'offences' => 0,
+            'orderindex' => 0,
+            'pending' => '',
+            'decoycount' => 0,
+            'decoys' => [],
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'drainsince' => 0.0,
+            'readuntil' => 0.0,
+            'dodge' => false,
+            'reversed' => false,
+            'over' => false,
+            'boss' => '',
+            'messages' => [],
+            'response' => self::empty_response(),
+        ];
+    }
+
+    /**
+     * The effects that only the response which caused them carries.
+     *
+     * @return array penalty started, reading time and decoys issued by this response
+     */
+    protected static function empty_response(): array {
+        return ['penalty' => '', 'readtime' => 0, 'decoys' => []];
+    }
+
+    /**
+     * Keyed hash of a value with this session's secret, cut to a 16-character token.
+     *
+     * @param string $value
+     * @return string
+     */
+    protected function hmac(string $value): string {
+        return substr(hash_hmac('sha256', $value, $this->data()['secret']), 0, 16);
+    }
+
+    /**
      * Opaque token for an answer or match subquestion.
      *
      * @param string $kind 'a' (answer), 's' (match stem) or 'm' (match answer)
@@ -80,7 +267,7 @@ class game_session {
      * @return string
      */
     public function token(string $kind, int $id): string {
-        return substr(hash_hmac('sha256', $kind . ':' . $id, $this->data()['secret']), 0, 16);
+        return $this->hmac($kind . ':' . $id);
     }
 
     /**
@@ -91,6 +278,9 @@ class game_session {
      * @return array List of question arrays for the game JavaScript
      */
     public function prepare(context $context): array {
+        if ($this->context === null) {
+            $this->context = $context;
+        }
         $questions = quizgame_get_game_questions($this->quizgame);
         $client = [];
         foreach ($questions as $question) {
@@ -140,31 +330,15 @@ class game_session {
     }
 
     /**
-     * Start a new game.
+     * Start a new game. All cheater mode state starts afresh.
      *
      * @return float|null The score of an unfinished previous game (null if there was none)
      */
     public function start(): ?float {
+        $previous = $this->finish();
         $data = &$this->data();
-        $previous = null;
-        if (!empty($data['attempt'])) {
-            $this->close_level(false);
-            $previous = $data['attempt']['score'];
-        }
-        $data['attempt'] = [
-            'started' => time(),
-            'score' => 0.0,
-            'level' => 0,
-            'levelopened' => 0.0,
-            'leveltime' => 0.0,
-            'current' => null,
-            'closed' => true,
-            'completed' => false,
-            'shot' => [],
-            'matched' => [],
-            'roundopened' => [],
-        ];
-        return $previous;
+        $data['attempt'] = $this->new_attempt();
+        return $previous === null ? null : $previous[0];
     }
 
     /**
@@ -178,9 +352,14 @@ class game_session {
         if (empty($data['attempt'])) {
             return null;
         }
+        $attempt = &$this->attempt();
         // Dying mid-level never cost the ships still on screen.
         $this->close_level(false);
-        $result = [$data['attempt']['score'], $data['attempt']['leveltime']];
+        $this->settle_drain();
+        if ($attempt['over']) {
+            $attempt['score'] = 0.0;
+        }
+        $result = [$attempt['score'], $attempt['leveltime']];
         $data['attempt'] = null;
         return $result;
     }
@@ -190,10 +369,10 @@ class game_session {
      *
      * @param int $questionid The question (level) the action is on
      * @param int $level The game's level counter (1 for the first level, +1 for each next level)
-     * @param string $action 'shoot' or 'levelend'
+     * @param string $action 'levelstart', 'shoot', 'miss' or 'levelend'
      * @param string $token The ship shot
      * @param string $token2 For match questions, the selected ship of the other kind
-     * @return array result (hit|deflect|miss|done), points, score, levelcomplete
+     * @return array result (started|hit|deflect|miss|blocked|dodge|done), points, score, levelcomplete, effects
      */
     public function answer(int $questionid, int $level, string $action, string $token = '', string $token2 = ''): array {
         $data = &$this->data();
@@ -203,29 +382,99 @@ class game_session {
         if (!in_array($questionid, $data['questionids'])) {
             throw new moodle_exception('invalidgamequestion', 'quizgame');
         }
-        $this->open_level($questionid, $level);
-        $attempt = &$data['attempt'];
+        $attempt = &$this->attempt();
+        // Messages and one-off effects belong to the response that caused them.
+        $attempt['messages'] = [];
+        $attempt['response'] = self::empty_response();
+        $this->settle_drain();
 
-        $result = ['result' => 'done', 'points' => 0.0];
-        if ($action == 'levelend') {
-            $this->close_level();
-        } else if (!$attempt['completed'] && !$attempt['closed']) {
-            $question = $this->load_question($questionid);
-            if (!$question) {
-                throw new moodle_exception('invalidgamequestion', 'quizgame');
-            }
-            if ($question->qtype == 'match') {
-                $result = $this->shoot_match($question, $token, $token2);
-            } else {
-                $result = $this->shoot_choice($question, $token);
-            }
-            $attempt['score'] += $result['points'];
+        if ($attempt['over']) {
+            // After the boss finale the game is lost: nothing scores any more.
+            $attempt['score'] = 0.0;
+            $result = ['result' => 'done', 'points' => 0.0];
+        } else if ($action == 'miss' && ($attempt['level'] !== $level || $attempt['current'] !== $questionid)) {
+            // A miss never opens a level: one that crosses a level change is ignored.
+            $result = ['result' => 'done', 'points' => 0.0];
+        } else {
+            $this->open_level($questionid, $level);
+            $result = $this->act($questionid, $action, $token, $token2);
         }
 
         return $result + [
             'score' => $attempt['score'],
             'levelcomplete' => $attempt['completed'],
+            'effects' => $this->effects(),
         ];
+    }
+
+    /**
+     * Carry out an action on the current level.
+     *
+     * @param int $questionid The question of the current level
+     * @param string $action 'levelstart', 'shoot', 'miss' or 'levelend'
+     * @param string $token The ship shot
+     * @param string $token2 For match questions, the selected ship of the other kind
+     * @return array result and points
+     */
+    protected function act(int $questionid, string $action, string $token, string $token2): array {
+        switch ($action) {
+            case 'levelstart':
+                // The level was opened by answer(); its effects go with this response.
+                return ['result' => 'started', 'points' => 0.0];
+            case 'levelend':
+                $this->close_level();
+                return ['result' => 'done', 'points' => 0.0];
+            case 'miss':
+                return $this->miss();
+            default:
+                return $this->shoot($questionid, $token, $token2);
+        }
+    }
+
+    /**
+     * The effects the browser has to play, from the current state.
+     *
+     * Keys: messages (string[]), penalty (key started by the last response, '' none, 'boss'),
+     * cheater (bool), readtime (int seconds), decoys ([{text, token}]), dodge (bool), reversed (bool),
+     * aggression (int 0..5), drainrate (float points/s), boss ('' | 'big' | 'swarm'), swarmsize (int).
+     * All empty or zero when the Sassy enhancements are off.
+     *
+     * @return array
+     */
+    public function effects(): array {
+        $effects = [
+            'messages' => [],
+            'penalty' => '',
+            'cheater' => false,
+            'readtime' => 0,
+            'decoys' => [],
+            'dodge' => false,
+            'reversed' => false,
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'boss' => '',
+            'swarmsize' => 0,
+        ];
+        $data = $this->data();
+        if (empty($data['attempt']) || !$this->sassy()) {
+            return $effects;
+        }
+        $attempt = $data['attempt'] + $this->new_attempt();
+        $response = $attempt['response'] + self::empty_response();
+        $boss = (string) $attempt['boss'];
+        return [
+            'messages' => array_values($attempt['messages']),
+            'penalty' => (string) $response['penalty'],
+            'cheater' => (bool) $attempt['cheater'],
+            'readtime' => (int) $response['readtime'],
+            'decoys' => array_values($response['decoys']),
+            'dodge' => (bool) $attempt['dodge'],
+            'reversed' => (bool) $attempt['reversed'],
+            'aggression' => (int) $attempt['aggression'],
+            'drainrate' => (float) $attempt['drainrate'],
+            'boss' => $boss,
+            'swarmsize' => $boss === 'swarm' ? $this->int_setting('sassyswarmsize') : 0,
+        ] + $effects;
     }
 
     /**
@@ -236,12 +485,13 @@ class game_session {
      *
      * @param int $questionid
      * @param int $level the client's level counter
+     * @return bool whether a new level was opened
      */
-    protected function open_level(int $questionid, int $level): void {
+    protected function open_level(int $questionid, int $level): bool {
         $data = &$this->data();
-        $attempt = &$data['attempt'];
+        $attempt = &$this->attempt();
         if ($attempt['level'] === $level && $attempt['current'] === $questionid) {
-            return;
+            return false;
         }
         // Check everything before changing any state.
         if ($level <= $attempt['level']) {
@@ -260,12 +510,90 @@ class game_session {
         }
         $attempt['roundopened'][$questionid] = true;
         $attempt['level'] = $level;
-        $attempt['levelopened'] = microtime(true);
+        $attempt['levelopened'] = $this->now();
         $attempt['current'] = $questionid;
         $attempt['closed'] = false;
         $attempt['completed'] = false;
         $attempt['shot'] = [];
         $attempt['matched'] = [];
+        $this->begin_level();
+        return true;
+    }
+
+    /**
+     * Reset the per-level state of a newly opened level and apply the penalties due at its start.
+     */
+    protected function begin_level(): void {
+        $attempt = &$this->attempt();
+        $attempt['levelwrong'] = 0;
+        $attempt['decoys'] = [];
+        $attempt['dodge'] = false;
+        $attempt['reversed'] = false;
+        $attempt['readuntil'] = 0.0;
+        if (!$this->sassy()) {
+            return;
+        }
+        $this->apply_pending();
+        $this->issue_decoys();
+    }
+
+    /**
+     * Start the level-scoped penalty (Read it first, reversed controls, dodge round) waiting for this level.
+     */
+    protected function apply_pending(): void {
+        $attempt = &$this->attempt();
+        $key = (string) $attempt['pending'];
+        $attempt['pending'] = '';
+        switch ($key) {
+            case 'readfirst':
+                $readtime = $this->int_setting('sassyreadtime');
+                $attempt['readuntil'] = $this->now() + $readtime;
+                // Reading time does not count as time the level was open (the per-second cap).
+                $attempt['levelopened'] = $attempt['readuntil'];
+                $attempt['response']['readtime'] = $readtime;
+                $this->queue_messages([
+                    $this->format_line(get_string('sassy_readfirst_msg', 'mod_quizgame')),
+                    $this->format_line(get_string('sassy_readfirst_help', 'mod_quizgame')),
+                ]);
+                break;
+            case 'reversed':
+                $attempt['reversed'] = true;
+                $this->queue_messages([$this->format_line(get_string('sassy_reversed_msg', 'mod_quizgame'))]);
+                break;
+            case 'dodge':
+                $attempt['dodge'] = true;
+                $this->queue_messages($this->random_taunt());
+                break;
+            default:
+                return;
+        }
+        $attempt['response']['penalty'] = $key;
+    }
+
+    /**
+     * Issue this level's decoy ships while the player is a cheater with the decoys penalty.
+     */
+    protected function issue_decoys(): void {
+        $attempt = &$this->attempt();
+        if (!$attempt['cheater'] || $attempt['decoycount'] <= 0) {
+            return;
+        }
+        $labels = $this->message_list('sassydecoylabels', 'sassy_decoylabels_default', false);
+        for ($i = 1; $i <= $attempt['decoycount']; $i++) {
+            $token = $this->hmac('d:' . $attempt['level'] . ':' . $i);
+            $attempt['decoys'][$token] = true;
+            $text = $labels ? $labels[random_int(0, count($labels) - 1)][0] : '?';
+            $attempt['response']['decoys'][] = ['text' => $text, 'token' => $token];
+        }
+    }
+
+    /**
+     * Whether the current level is still in its reading time (no shots yet).
+     *
+     * @return bool
+     */
+    protected function reading(): bool {
+        return $this->now() < $this->attempt()['readuntil'];
     }
 
     /**
@@ -274,12 +602,11 @@ class game_session {
      * @param bool $penalise false when the game ends, as ships still on screen were not missed
      */
     protected function close_level(bool $penalise = true): void {
-        $data = &$this->data();
-        $attempt = &$data['attempt'];
+        $attempt = &$this->attempt();
         if ($attempt['current'] === null || $attempt['closed']) {
             return;
         }
-        $attempt['leveltime'] += max(0, microtime(true) - $attempt['levelopened']);
+        $attempt['leveltime'] += max(0, $this->now() - $attempt['levelopened']);
         if (!$attempt['completed'] && $penalise) {
             $question = $this->load_question($attempt['current']);
             if ($question) {
@@ -297,19 +624,20 @@ class game_session {
      * @return float
      */
     protected function missed_points(stdClass $question): float {
-        $attempt = $this->data()['attempt'];
+        $attempt = $this->attempt();
+        $points = $this->points_correct();
         $missed = 0.0;
         if ($question->qtype == 'match') {
             $stems = self::stems($question);
             foreach ($stems as $sub) {
                 if (!isset($attempt['matched'][$sub->id])) {
-                    $missed += self::POINTS / count($stems);
+                    $missed += $points / count($stems);
                 }
             }
         } else {
             foreach ($question->options->answers as $answer) {
                 if ($answer->fraction > 0 && !isset($attempt['shot'][$this->token('a', $answer->id)])) {
-                    $missed += self::POINTS * $answer->fraction;
+                    $missed += $points * $answer->fraction;
                 }
             }
         }
@@ -317,15 +645,110 @@ class game_session {
     }
 
     /**
+     * A shot that hit nothing: costs the miss penalty, never counts as a wrong hit.
+     *
+     * @return array result and points
+     */
+    protected function miss(): array {
+        $attempt = &$this->attempt();
+        if ($attempt['completed'] || $attempt['closed']) {
+            return ['result' => 'done', 'points' => 0.0];
+        }
+        if ($this->reading()) {
+            return ['result' => 'blocked', 'points' => 0.0];
+        }
+        if ($attempt['dodge']) {
+            return ['result' => 'dodge', 'points' => 0.0];
+        }
+        $points = 0.0 - max(0, (int) $this->setting('misspenalty'));
+        $attempt['score'] += $points;
+        return ['result' => 'miss', 'points' => $points];
+    }
+
+    /**
+     * Shoot a ship of the current level and apply what the shot means for cheater mode.
+     *
+     * @param int $questionid
+     * @param string $token The ship shot
+     * @param string $token2 For match questions, the selected ship of the other kind
+     * @return array result and points
+     */
+    protected function shoot(int $questionid, string $token, string $token2): array {
+        $attempt = &$this->attempt();
+        if ($attempt['completed'] || $attempt['closed']) {
+            return ['result' => 'done', 'points' => 0.0];
+        }
+        if ($this->reading()) {
+            return ['result' => 'blocked', 'points' => 0.0];
+        }
+        if ($attempt['dodge']) {
+            // Dodge round: every ship dodges, so no shot lands (decided here, not by the browser).
+            return ['result' => 'dodge', 'points' => 0.0];
+        }
+        $question = $this->load_question($questionid);
+        if (!$question) {
+            throw new moodle_exception('invalidgamequestion', 'quizgame');
+        }
+        if ($question->qtype == 'match') {
+            $result = $this->shoot_match($question, $token, $token2);
+        } else {
+            $result = $this->shoot_choice($question, $token);
+        }
+        $wrong = !empty($result['wrong']);
+        unset($result['wrong']);
+
+        $attempt['score'] += $result['points'];
+        if ($wrong) {
+            $this->wrong_hit();
+        } else if ($result['result'] == 'hit' && $attempt['completed'] && $attempt['levelwrong'] == 0) {
+            $this->clean_question();
+        }
+        return $result;
+    }
+
+    /**
+     * The wrong-hit penalty schedule: penalties of the 1st, 2nd, 3rd... wrong hit in a level.
+     *
+     * @return int[] never empty
+     */
+    protected function wrong_schedule(): array {
+        $schedule = [];
+        foreach (explode(',', preg_replace('/\s+/', '', (string) $this->setting('wrongpenalties'))) as $value) {
+            if ($value !== '' && ctype_digit($value)) {
+                $schedule[] = (int) $value;
+            }
+        }
+        return $schedule ?: [(int) self::DEFAULTS['wrongpenalties']];
+    }
+
+    /**
+     * Points of the next wrong hit in this level on an answer worth a fraction (decoys: 0).
+     *
+     * -max(0, S[n] x (1 - 2 x fraction)), so a wrong hit never pays and negative fractions cost more.
+     *
+     * @param float $fraction
+     * @return float zero or negative
+     */
+    protected function wrong_points(float $fraction): float {
+        $schedule = $this->wrong_schedule();
+        $n = $this->attempt()['levelwrong'] + 1;
+        $penalty = $schedule[min($n, count($schedule)) - 1];
+        return 0.0 - max(0.0, $penalty * (1 - 2 * $fraction));
+    }
+
+    /**
      * Shoot an answer ship of a truefalse or multichoice question.
      *
      * @param stdClass $question
      * @param string $token
-     * @return array result and points
+     * @return array result and points, plus wrong => true for a wrong hit
      */
     protected function shoot_choice(stdClass $question, string $token): array {
-        $data = &$this->data();
-        $attempt = &$data['attempt'];
+        $attempt = &$this->attempt();
+        if (isset($attempt['decoys'][$token])) {
+            // Decoys are wrong answers worth nothing.
+            return ['result' => 'deflect', 'points' => $this->wrong_points(0.0), 'wrong' => true];
+        }
         $single = $question->qtype == 'truefalse' || !empty($question->options->single);
 
         $answer = null;
@@ -345,7 +768,7 @@ class game_session {
         $hit = $question->qtype == 'truefalse' ? $fraction > 0 : ($fraction >= 1 || ($fraction > 0 && !$single));
         if (!$hit) {
             // A deflect never pays: partial credit above 0.5 used to earn points on every repeat shot.
-            return ['result' => 'deflect', 'points' => min(0.0, ($fraction - 0.5) * self::DEFLECT_POINTS)];
+            return ['result' => 'deflect', 'points' => $this->wrong_points($fraction), 'wrong' => true];
         }
 
         $attempt['shot'][$token] = true;
@@ -359,21 +782,27 @@ class game_session {
             }
         }
         $attempt['completed'] = $complete;
-        return ['result' => 'hit', 'points' => self::POINTS * $fraction];
+        return ['result' => 'hit', 'points' => $this->points_correct() * $fraction];
     }
 
     /**
      * Pair a stem ship with an answer ship of a match question.
      *
+     * A wrong pair (including a decoy answer ship) scores nothing but is a wrong hit.
+     *
      * @param stdClass $question
      * @param string $stemtoken
      * @param string $answertoken
-     * @return array result and points
+     * @return array result and points, plus wrong => true for a wrong hit
      */
     protected function shoot_match(stdClass $question, string $stemtoken, string $answertoken): array {
-        $data = &$this->data();
-        $attempt = &$data['attempt'];
+        $attempt = &$this->attempt();
 
+        $decoy = isset($attempt['decoys'][$answertoken]) || isset($attempt['decoys'][$stemtoken]);
+        if (isset($attempt['decoys'][$stemtoken])) {
+            // The decoy may come either way round; the other ship must be a real stem.
+            [$stemtoken, $answertoken] = [$answertoken, $stemtoken];
+        }
         $stems = self::stems($question);
         $stem = $answer = null;
         foreach ($stems as $sub) {
@@ -381,25 +810,289 @@ class game_session {
                 $stem = $sub;
             }
         }
-        foreach ($question->options->subquestions as $sub) {
-            if (hash_equals($this->token('m', $sub->id), $answertoken)) {
-                $answer = $sub;
+        if (!$decoy) {
+            foreach ($question->options->subquestions as $sub) {
+                if (hash_equals($this->token('m', $sub->id), $answertoken)) {
+                    $answer = $sub;
+                }
             }
         }
-        if (!$stem || !$answer) {
+        if (!$stem || (!$answer && !$decoy)) {
             throw new moodle_exception('invalidgameanswer', 'quizgame');
         }
-        if (isset($attempt['matched'][$stem->id]) || in_array($answer->id, $attempt['matched'])) {
+        if (isset($attempt['matched'][$stem->id]) || ($answer && in_array($answer->id, $attempt['matched']))) {
             return ['result' => 'done', 'points' => 0.0];
         }
-        if (trim($stem->answertext) !== trim($answer->answertext)) {
-            return ['result' => 'miss', 'points' => 0.0];
+        if ($decoy || trim($stem->answertext) !== trim($answer->answertext)) {
+            return ['result' => 'miss', 'points' => 0.0, 'wrong' => true];
         }
 
         // Remember which answer ship was used, so it cannot be paired again.
         $attempt['matched'][$stem->id] = $answer->id;
         $attempt['completed'] = count($attempt['matched']) >= count($stems);
-        return ['result' => 'hit', 'points' => self::POINTS / count($stems)];
+        return ['result' => 'hit', 'points' => $this->points_correct() / count($stems)];
+    }
+
+    /**
+     * Count a wrong hit: the level's schedule position and, with Sassy on, the cheater streak.
+     */
+    protected function wrong_hit(): void {
+        $attempt = &$this->attempt();
+        $attempt['levelwrong']++;
+        if (!$this->sassy()) {
+            return;
+        }
+        $attempt['wrongstreak']++;
+        if ($attempt['cheater']) {
+            $this->escalate();
+        }
+        if ($attempt['wrongstreak'] >= $this->int_setting('sassywrongtrigger')) {
+            $this->new_offence();
+        }
+    }
+
+    /**
+     * A further wrong hit in cheater mode worsens every active persistent penalty.
+     */
+    protected function escalate(): void {
+        $attempt = &$this->attempt();
+        if ($attempt['decoycount'] > 0) {
+            $attempt['decoycount'] = min($this->int_setting('sassymaxdecoys'), $attempt['decoycount'] + 1);
+        }
+        if ($attempt['aggression'] > 0) {
+            $attempt['aggression'] = min(self::MAX_AGGRESSION, $attempt['aggression'] + 1);
+        }
+        if ($attempt['drainrate'] > 0) {
+            $this->settle_drain();
+            $attempt['drainrate'] *= 1 + $this->int_setting('sassydrainincrease') / 100;
+        }
+    }
+
+    /**
+     * A level completed without a wrong hit: resets the streak and counts towards leaving cheater mode.
+     */
+    protected function clean_question(): void {
+        if (!$this->sassy()) {
+            return;
+        }
+        $attempt = &$this->attempt();
+        $attempt['wrongstreak'] = 0;
+        if (!$attempt['cheater']) {
+            return;
+        }
+        $attempt['cleanstreak']++;
+        if ($attempt['cleanstreak'] >= $this->int_setting('sassycleanneeded')) {
+            $this->leave_cheater();
+        }
+    }
+
+    /**
+     * Leave cheater mode: the persistent penalties stop. The offence count stays for the game.
+     */
+    protected function leave_cheater(): void {
+        $attempt = &$this->attempt();
+        $this->settle_drain();
+        $attempt['cheater'] = false;
+        $attempt['cleanstreak'] = 0;
+        $attempt['decoycount'] = 0;
+        $attempt['aggression'] = 0;
+        $attempt['drainrate'] = 0.0;
+        $attempt['pending'] = '';
+    }
+
+    /**
+     * A new offence: enter (or stay in) cheater mode and start the next tier's penalty.
+     */
+    protected function new_offence(): void {
+        $attempt = &$this->attempt();
+        $attempt['offences']++;
+        $attempt['wrongstreak'] = 0;
+        $attempt['cheater'] = true;
+        $attempt['cleanstreak'] = 0;
+        $this->start_penalty($this->choose_penalty());
+    }
+
+    /**
+     * The enabled higher-tier penalties, in severity order.
+     *
+     * @return string[]
+     */
+    protected function enabled_penalties(): array {
+        $keys = array_map('trim', explode(',', (string) $this->setting('sassypenalties')));
+        return array_values(array_intersect(self::PENALTIES, $keys));
+    }
+
+    /**
+     * The penalty of the current offence: Read it first, then the enabled ones, then the boss.
+     *
+     * @return string penalty key or 'boss'
+     */
+    protected function choose_penalty(): string {
+        $attempt = &$this->attempt();
+        if ($attempt['offences'] <= 1) {
+            return 'readfirst';
+        }
+        if ($attempt['offences'] >= $this->int_setting('sassybosslimit')) {
+            return 'boss';
+        }
+        $enabled = $this->enabled_penalties();
+        if (!$enabled) {
+            return 'readfirst';
+        }
+        if ((int) $this->setting('sassyorder') == 1) {
+            return $enabled[random_int(0, count($enabled) - 1)];
+        }
+        $key = $enabled[$attempt['orderindex'] % count($enabled)];
+        $attempt['orderindex']++;
+        return $key;
+    }
+
+    /**
+     * Start a penalty: level-scoped ones wait for the next level, the others start now.
+     *
+     * @param string $key penalty key or 'boss'
+     */
+    protected function start_penalty(string $key): void {
+        $attempt = &$this->attempt();
+        switch ($key) {
+            case 'boss':
+                $this->start_boss();
+                return;
+            case 'readfirst':
+            case 'reversed':
+            case 'dodge':
+                $attempt['pending'] = $key;
+                return;
+            case 'decoys':
+                $attempt['decoycount'] = max(1, $attempt['decoycount']);
+                break;
+            case 'returnfire':
+                $attempt['aggression'] = max(1, $attempt['aggression']);
+                break;
+            case 'drain':
+                if ($attempt['drainrate'] <= 0) {
+                    $attempt['drainrate'] = (float) $this->int_setting('sassydrainrate');
+                    $attempt['drainsince'] = $this->now();
+                }
+                break;
+            default:
+                return;
+        }
+        $attempt['response']['penalty'] = $key;
+        $this->queue_messages($this->random_taunt());
+    }
+
+    /**
+     * The boss finale: the game is over and its score is 0.
+     */
+    protected function start_boss(): void {
+        $attempt = &$this->attempt();
+        $this->settle_drain();
+        $attempt['score'] = 0.0;
+        $attempt['drainrate'] = 0.0;
+        $attempt['over'] = true;
+        $style = (int) $this->setting('sassybossstyle');
+        if ($style == 2) {
+            $style = random_int(0, 1);
+        }
+        $attempt['boss'] = $style == 1 ? 'swarm' : 'big';
+        $attempt['response']['penalty'] = 'boss';
+        $lines = [];
+        foreach ($this->message_list('sassybosslines', 'sassy_bosslines_default') as $steps) {
+            $lines = array_merge($lines, $steps);
+        }
+        $this->queue_messages($lines);
+    }
+
+    /**
+     * Apply the score drain accumulated since it was last settled. The score never drains below 0.
+     */
+    protected function settle_drain(): void {
+        $attempt = &$this->attempt();
+        if ($attempt['drainrate'] <= 0) {
+            return;
+        }
+        $now = $this->now();
+        $drained = $attempt['drainrate'] * max(0, $now - $attempt['drainsince']);
+        if ($attempt['score'] > 0) {
+            $attempt['score'] = max(0.0, $attempt['score'] - $drained);
+        }
+        $attempt['drainsince'] = $now;
+    }
+
+    /**
+     * Add message lines to the response being built.
+     *
+     * @param string[] $lines formatted lines
+     */
+    protected function queue_messages(array $lines): void {
+        $attempt = &$this->attempt();
+        foreach ($lines as $line) {
+            if ($line !== '') {
+                $attempt['messages'][] = $line;
+            }
+        }
+    }
+
+    /**
+     * One random taunt, its steps in order.
+     *
+     * @return string[] formatted lines
+     */
+    protected function random_taunt(): array {
+        $taunts = $this->message_list('sassytaunts', 'sassy_taunts_default');
+        return $taunts ? $taunts[random_int(0, count($taunts) - 1)] : [];
+    }
+
+    /**
+     * Parse a message list setting: one entry per line, blank lines ignored, "a || b" a two-step entry.
+     *
+     * An empty setting uses the built-in default list (a lang string, one entry per line).
+     *
+     * @param string $field the quizgame column
+     * @param string $defaultkey lang string of the default list
+     * @param bool $steps whether "||" splits an entry into steps (labels are single lines)
+     * @return string[][] entries, each a non-empty list of formatted lines
+     */
+    protected function message_list(string $field, string $defaultkey, bool $steps = true): array {
+        $text = trim((string) ($this->quizgame->$field ?? ''));
+        if ($text === '') {
+            $text = get_string($defaultkey, 'mod_quizgame');
+        }
+        $list = [];
+        foreach (preg_split('/\R/u', $text) as $line) {
+            $entry = [];
+            foreach ($steps ? explode('||', $line) : [$line] as $step) {
+                $step = $this->format_line($step);
+                if ($step !== '') {
+                    $entry[] = $step;
+                }
+            }
+            if ($entry) {
+                $list[] = $entry;
+            }
+        }
+        return $list;
+    }
+
+    /**
+     * The decoy ship labels, for the swarm finale's ships (which never reach the server).
+     *
+     * @return string[] formatted labels; the built-in list when the setting is empty
+     */
+    public function decoy_labels(): array {
+        return array_column($this->message_list('sassydecoylabels', 'sassy_decoylabels_default', false), 0);
+    }
+
+    /**
+     * Format a message line for the game canvas (drawn as text, not HTML).
+     *
+     * @param string $line
+     * @return string plain text
+     */
+    protected function format_line(string $line): string {
+        $text = format_string(trim($line), true, ['context' => $this->context()]);
+        return trim(core_text::entities_to_utf8(strip_tags($text)));
     }
 
     /**

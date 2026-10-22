@@ -224,4 +224,186 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->expectException(\invalid_parameter_exception::class);
         mod_quizgame_external::answer($this->quizgame->id, $this->question->id, 1, 'cheat');
     }
+
+    /**
+     * Change settings of the test quizgame in the database (the web services read the record from there).
+     *
+     * @param array $settings column => value
+     */
+    protected function set_settings(array $settings): void {
+        global $DB;
+        foreach ($settings as $column => $value) {
+            $DB->set_field('quizgame', $column, $value, ['id' => $this->quizgame->id]);
+        }
+    }
+
+    /**
+     * Call the answer web service and check the response against its returns description.
+     *
+     * @param int $level
+     * @param string $action
+     * @param string $token
+     * @return array the cleaned response
+     */
+    protected function answer(int $level, string $action, string $token = ''): array {
+        $result = mod_quizgame_external::answer($this->quizgame->id, $this->question->id, $level, $action, $token);
+        return \core_external\external_api::clean_returnvalue(mod_quizgame_external::answer_returns(), $result);
+    }
+
+    /**
+     * With Sassy off every response carries empty effects, also for the levelstart action.
+     */
+    public function test_answer_effects_sassy_off(): void {
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        $none = [
+            'messages' => [],
+            'penalty' => '',
+            'cheater' => false,
+            'readtime' => 0,
+            'decoys' => [],
+            'dodge' => false,
+            'reversed' => false,
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'boss' => '',
+            'swarmsize' => 0,
+        ];
+        $result = $this->answer(1, 'levelstart');
+        $this->assertEquals(
+            ['started', 0.0, 0.0, false],
+            [$result['result'], $result['points'], $result['score'], $result['levelcomplete']]
+        );
+        $this->assertEquals($none, $result['effects']);
+        for ($i = 0; $i < 5; $i++) {
+            $this->assertEquals($none, $this->answer(1, 'shoot', $this->token(false))['effects']);
+        }
+        $this->assertEquals('hit', $this->answer(1, 'shoot', $this->token(true))['result']);
+    }
+
+    /**
+     * The effects payload of the shoot that starts cheater mode and of the levelstart that applies Read it first.
+     */
+    public function test_answer_effects_payload(): void {
+        $this->set_settings(['sassy' => 1, 'sassywrongtrigger' => 1, 'sassyreadtime' => 6]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        $result = $this->answer(1, 'levelstart');
+        $this->assertEquals('started', $result['result']);
+        $this->assertFalse($result['effects']['cheater']);
+
+        // The first offence: cheater mode starts, Read it first waits for the next level.
+        $result = $this->answer(1, 'shoot', $this->token(false));
+        $this->assertEquals(['deflect', -300.0], [$result['result'], $result['score']]);
+        $this->assertEquals([
+            'messages' => [],
+            'penalty' => '',
+            'cheater' => true,
+            'readtime' => 0,
+            'decoys' => [],
+            'dodge' => false,
+            'reversed' => false,
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'boss' => '',
+            'swarmsize' => 0,
+        ], $result['effects']);
+
+        // Starting level 2 closes level 1, whose correct answer was let go: -1000 more, -1300 in all.
+        $result = $this->answer(2, 'levelstart');
+        $this->assertEquals('started', $result['result']);
+        $this->assertEquals([
+            'messages' => [
+                get_string('sassy_readfirst_msg', 'quizgame'),
+                get_string('sassy_readfirst_help', 'quizgame'),
+            ],
+            'penalty' => 'readfirst',
+            'cheater' => true,
+            'readtime' => 6,
+            'decoys' => [],
+            'dodge' => false,
+            'reversed' => false,
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'boss' => '',
+            'swarmsize' => 0,
+        ], $result['effects']);
+
+        // Shooting during the reading time is blocked, and the one-off effects are gone.
+        $result = $this->answer(2, 'shoot', $this->token(true));
+        $this->assertEquals(['blocked', 0.0, -1300.0], [$result['result'], $result['points'], $result['score']]);
+        $effects = $result['effects'];
+        $this->assertEquals(['', 0, []], [$effects['penalty'], $effects['readtime'], $effects['messages']]);
+        $this->assertTrue($result['effects']['cheater']);
+    }
+
+    /**
+     * The boss response (swarm style) passes the returns description and sets the score to 0.
+     */
+    public function test_answer_effects_boss(): void {
+        global $DB;
+        $this->set_settings([
+            'sassy' => 1,
+            'sassywrongtrigger' => 1,
+            'sassybosslimit' => 2,
+            'sassybossstyle' => 1,
+            'sassyswarmsize' => 25,
+            'sassypenalties' => 'returnfire',
+            'sassybosslines' => 'Bye',
+        ]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        $this->assertEquals(1000.0, $this->answer(1, 'shoot', $this->token(true))['score']);
+        // Offence 1 (Read it first, waiting for level 3), then offence 2 in the same level: the boss.
+        $this->assertEquals(700.0, $this->answer(2, 'shoot', $this->token(false))['score']);
+        $result = $this->answer(2, 'shoot', $this->token(false));
+        $this->assertEquals(0.0, $result['score']);
+        $this->assertEquals([
+            'messages' => ['Bye'],
+            'penalty' => 'boss',
+            'cheater' => true,
+            'readtime' => 0,
+            'decoys' => [],
+            'dodge' => false,
+            'reversed' => false,
+            'aggression' => 0,
+            'drainrate' => 0.0,
+            'boss' => 'swarm',
+            'swarmsize' => 25,
+        ], $result['effects']);
+
+        // Everything after the boss is done, and the recorded score is 0.
+        $result = $this->answer(3, 'levelstart');
+        $effects = $result['effects'];
+        $this->assertEquals(
+            ['done', 0.0, 'swarm', ''],
+            [$result['result'], $result['score'], $effects['boss'], $effects['penalty']]
+        );
+        $id = mod_quizgame_external::update_score($this->quizgame->id, 5000);
+        $this->assertEquals(0, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+    }
+
+    /**
+     * The per-second cap uses the activity's points for a correct hit.
+     */
+    public function test_points_cap_uses_pointscorrect(): void {
+        global $DB;
+        $this->assertSame(10000, mod_quizgame_external::bounded_score(12000, 1.5, 5000));
+        $this->assertSame(2000, mod_quizgame_external::bounded_score(12000, 1.5));
+
+        $this->set_settings(['pointscorrect' => 5000]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+        $this->assertEquals(5000, $this->answer(1, 'shoot', $this->token(true))['score']);
+        // Under the old fixed cap of 1000 points per second this quick game would record 1000.
+        $id = mod_quizgame_external::update_score($this->quizgame->id);
+        $this->assertEquals(5000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+    }
 }

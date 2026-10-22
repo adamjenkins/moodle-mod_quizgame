@@ -41,7 +41,7 @@ class mod_quizgame_renderer extends plugin_renderer_base {
      */
     public function render_game($quizgame, $context) {
         // The browser gets answer tokens only; correctness is checked by the server per shot.
-        $session = new \mod_quizgame\local\game_session($quizgame);
+        $session = new \mod_quizgame\local\game_session($quizgame, $context);
         $questions = $session->prepare($context);
 
         $this->page->requires->strings_for_js(
@@ -49,6 +49,9 @@ class mod_quizgame_renderer extends plugin_renderer_base {
                 'emptyquiz',
                 'endofgame',
                 'spacetostart',
+                'sassy_gameover',
+                'sassy_continue',
+                'sassy_reading',
             ],
             'mod_quizgame'
         );
@@ -63,6 +66,18 @@ class mod_quizgame_renderer extends plugin_renderer_base {
             get_string('howtoplay', 'mod_quizgame') . $this->output->help_icon('howtoplay', 'mod_quizgame', '')
         );
 
+        $jsonflags = JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT
+            | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR;
+        // Only what the client needs to know: whether to report misses, and whether Sassy effects can come.
+        $config = [
+            'reportmisses' => (int) ($quizgame->misspenalty ?? 0) > 0,
+            'sassy' => !empty($quizgame->sassy),
+        ];
+        if ($config['sassy']) {
+            // Labels for the swarm finale's ships, which may come before any level had decoys.
+            $config['decoylabels'] = $session->decoy_labels();
+        }
+
         $gamelabel = get_string('gamecanvaslabel', 'mod_quizgame');
         // The questions travel in an attribute (escaped by html_writer), read by the AMD module.
         $display .= html_writer::tag('canvas', s($gamelabel), [
@@ -70,12 +85,16 @@ class mod_quizgame_renderer extends plugin_renderer_base {
             'role' => 'img',
             'aria-label' => $gamelabel,
             // Hex-encode &, <, >, ' and " so no HTML entity can appear in the JSON (s() keeps numeric entities).
-            'data-questions' => json_encode(
-                $questions,
-                JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR
-            ),
+            'data-questions' => json_encode($questions, $jsonflags),
+            'data-config' => json_encode($config, $jsonflags),
         ]);
-        $sounds = ['laser' => 'Laser', 'explosion' => 'Explosion', 'deflect' => 'Deflect', 'enemylaser' => 'EnemyLaser'];
+        $sounds = [
+            'laser' => 'Laser',
+            'explosion' => 'Explosion',
+            'deflect' => 'Deflect',
+            'enemylaser' => 'EnemyLaser',
+            'bosslaser' => 'BossLaser',
+        ];
         foreach ($sounds as $id => $file) {
             $display .= '<audio id="mod_quizgame_sound_' . $id . '" preload="auto">' .
                 '<source src="' . (new moodle_url('/mod/quizgame/sound/' . $file . '.wav'))->out() . '" type="audio/wav" />' .

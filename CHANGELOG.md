@@ -5,6 +5,31 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102200] — Unreleased — Configurable scoring, Sassy enhancements
+
+### Added
+- **Scoring settings**: points for a correct hit (default 1000), a wrong-hit penalty
+  schedule for the 1st, 2nd, 3rd... wrong hit within a question whose last value repeats
+  (default `300`), and a miss penalty for shots that hit nothing (default 0). The defaults
+  keep the earlier scoring; a schedule such as `300,600,1000` makes random guessing lose
+  points. The points-per-second cap follows the points for a correct hit.
+- **Sassy enhancements** (off by default): cheater mode after a number of wrong hits
+  across questions, cleared by answering questions cleanly; snarky pause messages;
+  "Read it first" on the first offence, then decoy ships, reversed controls, a dodge
+  round, return fire or score drain (each can be switched off, chosen in order or at
+  random); and a boss finale that sets the score to 0, either a big boss or a swarm of
+  small ships. Taunts, decoy labels and boss lines are editable. All of it is decided by
+  the server.
+- New `levelstart` and `miss` actions and an `effects` structure in the
+  `mod_quizgame_answer` response.
+- Backup and restore include the new settings.
+
+### Changed
+- Help for the completion score and the grade target refers to the points for a correct
+  hit instead of a fixed 1000.
+
+---
+
 ## [2026100101] — Unreleased — Moodle 5.3 support, server-side answer checking, grade target shown to students
 
 ### Added

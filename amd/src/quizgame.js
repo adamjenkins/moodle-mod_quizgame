@@ -42,7 +42,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         'pix/enemystemselected.png',
         'pix/enemychoiceselected.png',
         'pix/laser.png',
-        'pix/enemylaser.png'
+        'pix/enemylaser.png',
+        'pix/bossship.png'
     ];
     var imagesLoaded = 0;
     var loaded = false;
@@ -64,6 +65,133 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     var serverQueue = Promise.resolve();
     var context;
     var inFullscreen = false;
+
+    // Sassy enhancements. The server decides every effect; the client only plays what it is told.
+    var config = {reportmisses: false, sassy: false};
+    var messageQueue = [];
+    var afterMessages = [];
+    var readingUntil = 0;
+    var pendingSpawn = null;
+    var levelReady = false;
+    var levelDodge = false;
+    var levelReversed = false;
+    var aggression = 0;
+    var drainRate = 0;
+    var scoreTime = 0;
+    var decoyLabels = [];
+    var boss = newBossState();
+
+    /**
+     * A fresh boss finale state: no finale running.
+     * @return {object}
+     */
+    function newBossState() {
+        return {
+            style: '',
+            swarmsize: 0,
+            started: false,
+            phase: '',
+            clock: 0,
+            shownScore: 0,
+            drainFrom: 0,
+            swarmSpawned: 0,
+            spawnClock: 0
+        };
+    }
+
+    /**
+     * The score shown on screen: the last server score, ticked down by any active score drain.
+     * @return {number}
+     */
+    function displayScore() {
+        if (boss.style !== '') {
+            return boss.shownScore;
+        }
+        if (drainRate > 0 && score > 0) {
+            return Math.max(0, score - drainRate * (Date.now() - scoreTime) / 1000);
+        }
+        return score;
+    }
+
+    /**
+     * Whether a pause message is being shown.
+     * @return {boolean}
+     */
+    function isPaused() {
+        return messageQueue.length > 0;
+    }
+
+    /**
+     * Whether the player is in the reading time before the ships of a level appear.
+     * @return {boolean}
+     */
+    function isReading() {
+        return readingUntil > 0;
+    }
+
+    /**
+     * Run a function once every pause message has been read (at once if there is none).
+     * @param {function} callback
+     */
+    function whenMessagesDone(callback) {
+        if (isPaused()) {
+            afterMessages.push(callback);
+        } else {
+            callback();
+        }
+    }
+
+    /**
+     * Move on to the next pause message; after the last one, play resumes.
+     */
+    function advanceMessage() {
+        messageQueue.shift();
+        if (!isPaused()) {
+            var callbacks = afterMessages;
+            afterMessages = [];
+            callbacks.forEach(function(callback) {
+                callback();
+            });
+        }
+    }
+
+    /**
+     * Play the effects of a server answer: messages, penalties and the boss finale.
+     * @param {object|undefined} effects the effects structure of the response
+     * @param {object} args the arguments of the call the response belongs to
+     */
+    function applyEffects(effects, args) {
+        // Nothing to play once the finale runs or the game is over (a late response would pause the end screen).
+        if (!effects || boss.style !== '' || !player || !player.alive) {
+            return;
+        }
+        if (effects.messages && effects.messages.length) {
+            messageQueue = messageQueue.concat(effects.messages.filter(function(line) {
+                return typeof line === 'string' && line !== '';
+            }));
+        }
+        aggression = Math.max(0, Math.min(5, effects.aggression || 0));
+        drainRate = Math.max(0, effects.drainrate || 0);
+        if (args.level === levelNumber && args.action !== 'levelend') {
+            levelDodge = !!effects.dodge;
+            levelReversed = !!effects.reversed;
+        }
+        (effects.decoys || []).forEach(function(decoy) {
+            if (decoy.text && decoyLabels.indexOf(decoy.text) === -1) {
+                decoyLabels.push(decoy.text);
+            }
+        });
+        if (effects.boss === 'big' || effects.boss === 'swarm') {
+            boss.style = effects.boss;
+            boss.swarmsize = Math.max(1, effects.swarmsize || 20);
+            var thisGame = gameId;
+            whenMessagesDone(function() {
+                if (thisGame === gameId && player.alive) {
+                    startBoss();
+                }
+            });
+        }
+    }
 
     $('#mod_quizgame_fullscreen_button').on('click', function() {
         if (inFullscreen) {
@@ -105,7 +233,14 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             if (thisGame !== gameId) {
                 return null;
             }
+            var effects = response.effects;
+            if (effects && boss.style === '' && (effects.boss === 'big' || effects.boss === 'swarm')) {
+                // The server has already zeroed the score; the finale drains the shown one to 0.
+                boss.shownScore = displayScore();
+            }
             score = response.score;
+            scoreTime = Date.now();
+            applyEffects(effects, args);
             return response;
         }).catch(function(error) {
             notification.exception(error);
@@ -120,7 +255,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         if (gameInterval === null) {
             gameInterval = setInterval(function() {
                 draw(context, displayRect, gameObjects, particles, question);
-                update(displayRect, gameObjects, particles);
+                // A pause message freezes the game; the frame is still drawn under it.
+                if (!isPaused()) {
+                    update(displayRect, gameObjects, particles);
+                }
             }, 40);
         }
     }
@@ -141,7 +279,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     function visibilityChange() {
         if (document.hidden) {
             stopLoop();
-        } else if (player && player.alive) {
+        } else if (player && (player.alive || bossSequenceRunning())) {
             startLoop();
         }
     }
@@ -151,10 +289,17 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {string} soundName
      */
     function playSound(soundName) {
-        if (document.getElementById("mod_quizgame_sound_on").checked) {
-            var soundElement = document.getElementById("mod_quizgame_sound_" + soundName);
+        var soundOn = document.getElementById("mod_quizgame_sound_on");
+        var soundElement = document.getElementById("mod_quizgame_sound_" + soundName);
+        if (soundOn && soundOn.checked && soundElement) {
             soundElement.currentTime = 0;
-            soundElement.play();
+            var playing = soundElement.play();
+            if (playing && typeof playing.catch === 'function') {
+                // Autoplay rules can refuse a sound; the game goes on silently.
+                playing.catch(function() {
+                    return null;
+                });
+            }
         }
     }
 
@@ -379,6 +524,18 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         touchDown = false;
         mouseDown = false;
         selectedMatch = null;
+        currentTeam = [];
+        messageQueue = [];
+        afterMessages = [];
+        readingUntil = 0;
+        pendingSpawn = null;
+        levelReady = false;
+        levelDodge = false;
+        levelReversed = false;
+        aggression = 0;
+        drainRate = 0;
+        scoreTime = Date.now();
+        boss = newBossState();
 
         // Every player needs a started game: the server checks the shots of guests too.
         serverCall('mod_quizgame_start_game', {quizgameid: quizgame}).catch(notification.exception);
@@ -415,29 +572,86 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
 
     /**
      * Helper function process next level (question).
+     *
+     * The question is shown at once; the server opens the level (levelstart) and its ships spawn when
+     * the response arrives, after any pause messages and reading time it asks for.
      */
     function nextLevel() {
+        if (boss.style !== '') {
+            return;
+        }
         levelNumber++;
         level++;
         if (level >= questions.length) {
             level = 0;
             enemySpeed *= 1.3;
         }
-        question = runLevel(questions, level, displayRect);
-    }
-
-    /**
-     * Helper function process current level.
-     * @param {array} questions
-     * @param {object} level
-     * @param {object} bounds
-     * @returns {string}
-     */
-    function runLevel(questions, level, bounds) {
         var q = questions[level];
         currentTeam = [];
         currentQuestionId = q.id;
         selectedMatch = null;
+        question = q.question;
+        levelReady = false;
+        levelDodge = false;
+        levelReversed = false;
+        readingUntil = 0;
+        pendingSpawn = null;
+
+        var thisGame = gameId;
+        var thisLevel = levelNumber;
+        var thisIndex = level;
+        /**
+         * Whether the game is still on the level this call started.
+         * @return {boolean}
+         */
+        var stillCurrent = function() {
+            return thisGame === gameId && thisLevel === levelNumber && player.alive && boss.style === '';
+        };
+        answer({questionid: q.id, level: thisLevel, action: 'levelstart'}).then(function(response) {
+            if (!stillCurrent()) {
+                return null;
+            }
+            var effects = (response && response.effects) ? response.effects : {};
+            var decoys = effects.decoys || [];
+            var readtime = Math.max(0, effects.readtime || 0);
+            /**
+             * Spawn the level's ships if the game is still on this level.
+             */
+            var spawn = function() {
+                if (stillCurrent()) {
+                    runLevel(questions, thisIndex, displayRect, decoys);
+                    levelReady = true;
+                }
+            };
+            whenMessagesDone(function() {
+                if (!stillCurrent()) {
+                    return;
+                }
+                if (readtime > 0) {
+                    readingUntil = Date.now() + readtime * 1000;
+                    pendingSpawn = spawn;
+                } else {
+                    spawn();
+                }
+            });
+            return response;
+        }).catch(notification.exception);
+    }
+
+    /**
+     * Spawn the ships of a level.
+     * @param {array} questions
+     * @param {object} level
+     * @param {object} bounds
+     * @param {array} decoys extra answer ships issued by the server, [{text, token}]
+     * @returns {string}
+     */
+    function runLevel(questions, level, bounds, decoys) {
+        var q = questions[level];
+        currentTeam = [];
+        currentQuestionId = q.id;
+        selectedMatch = null;
+        decoys = decoys || [];
 
         /**
          * Random start position above the screen.
@@ -452,12 +666,13 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 var p = start();
                 currentTeam.push(new MatchEnemy(p.x, p.y, stem.text, stem.token, true));
             });
-            q.answers.forEach(function(choice) {
+            // Decoys are answer-side ships: the server counts any pair with one as wrong.
+            q.answers.concat(decoys).forEach(function(choice) {
                 var p = start();
                 currentTeam.push(new MatchEnemy(p.x, p.y, choice.text, choice.token, false));
             });
         } else {
-            q.answers.forEach(function(choice) {
+            q.answers.concat(decoys).forEach(function(choice) {
                 var p = start();
                 currentTeam.push(new ChoiceEnemy(p.x, p.y, choice.text, choice.token));
             });
@@ -472,8 +687,105 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * Move on to the next level once the server says the current one is complete.
      */
     function advanceLevel() {
+        if (boss.style !== '') {
+            return;
+        }
         killAllAlive();
         nextLevel();
+    }
+
+    /**
+     * Report a friendly shot that left the screen without hitting anything (only when misses cost points).
+     */
+    function reportMiss() {
+        if (!config.reportmisses || boss.style !== '' || !player.alive || !levelReady) {
+            return;
+        }
+        answer({questionid: currentQuestionId, level: levelNumber, action: 'miss'});
+    }
+
+    /**
+     * Whether the player may fire now: not during a pause message or the reading time.
+     * @return {boolean}
+     */
+    function canFire() {
+        return player.alive && !isPaused() && !isReading();
+    }
+
+    /**
+     * Start the boss finale once its messages have been read.
+     */
+    function startBoss() {
+        if (boss.started) {
+            return;
+        }
+        boss.started = true;
+        boss.phase = 'play';
+        boss.clock = 0;
+        killAllAlive();
+        readingUntil = 0;
+        pendingSpawn = null;
+        levelDodge = false;
+        levelReversed = false;
+        question = '';
+        if (boss.style === 'big') {
+            var ship = new BossShip(displayRect);
+            gameObjects.push(ship);
+        }
+    }
+
+    /**
+     * Whether the boss finale is still playing out after the player's ship was destroyed.
+     * @return {boolean}
+     */
+    function bossSequenceRunning() {
+        return boss.started && (boss.phase === 'drain' || boss.phase === 'gameover');
+    }
+
+    /**
+     * The player's ship was destroyed during the boss finale: drain the score to 0, then GAME OVER.
+     */
+    function bossPlayerDestroyed() {
+        boss.phase = 'drain';
+        boss.clock = 0;
+        boss.drainFrom = boss.shownScore;
+        player.lastScore = 0;
+        score = 0;
+        drainRate = 0;
+    }
+
+    /**
+     * Run the boss finale one frame on.
+     * @param {object} bounds
+     */
+    function updateBoss(bounds) {
+        if (!boss.started) {
+            return;
+        }
+        boss.clock++;
+        if (boss.phase === 'play' && boss.style === 'swarm') {
+            // Keep the swarm full: ships pour in one after another, and each one shot is replaced.
+            var alive = gameObjects.filter(function(object) {
+                return object instanceof SwarmEnemy && object.alive;
+            }).length;
+            boss.spawnClock--;
+            if (alive < boss.swarmsize && boss.spawnClock <= 0) {
+                gameObjects.push(new SwarmEnemy(bounds));
+                boss.swarmSpawned++;
+                boss.spawnClock = 3;
+            }
+        } else if (boss.phase === 'drain') {
+            var frames = 38;
+            boss.shownScore = Math.max(0, boss.drainFrom * (1 - boss.clock / frames));
+            if (boss.clock >= frames) {
+                boss.shownScore = 0;
+                boss.phase = 'gameover';
+                boss.clock = 0;
+            }
+        } else if (boss.phase === 'gameover' && boss.clock >= 50) {
+            boss.phase = 'ended';
+            endGame();
+        }
     }
 
     /**
@@ -495,18 +807,22 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             objects[i].draw(context);
         }
 
-        if (player.alive) {
+        if (player.alive || bossSequenceRunning()) {
             context.fillStyle = '#FFFFFF';
             context.font = "18px Audiowide";
             context.textAlign = 'left';
             context.fillText(M.util.get_string('score', 'mod_quizgame',
                                                {
-                                                    "score": Math.round(score), "lives": player.lives
+                                                    "score": Math.round(displayScore()),
+                                                    "lives": player.alive ? player.lives : 0
                                                }),
                                                5, displayRect.height - 20);
             context.textAlign = 'center';
 
             wrapText(context, question, false, 20, displayRect.width * 0.9, displayRect.width / 2, 20);
+            if (boss.phase === 'gameover') {
+                drawGameOver(context, displayRect);
+            }
         } else {
             context.fillStyle = '#FFFFFF';
             context.font = "18px Audiowide";
@@ -514,7 +830,64 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             context.fillText(M.util.get_string('endofgame', 'mod_quizgame',
                                                Math.round(player.lastScore)),
                                                displayRect.width / 2, displayRect.height / 2);
+            if (boss.phase === 'ended') {
+                drawGameOver(context, displayRect);
+            }
         }
+        if (isReading() && player.alive) {
+            drawReading(context, displayRect);
+        }
+        if (isPaused()) {
+            drawPause(context, displayRect);
+        }
+    }
+
+    /**
+     * Draw GAME OVER above the middle of the screen.
+     * @param {object} context
+     * @param {object} displayRect
+     */
+    function drawGameOver(context, displayRect) {
+        context.fillStyle = '#FF3333';
+        context.font = "36px Audiowide";
+        context.textAlign = 'center';
+        context.fillText(M.util.get_string('sassy_gameover', 'mod_quizgame'), displayRect.width / 2,
+            displayRect.height / 2 - 50);
+    }
+
+    /**
+     * Draw the reading time notice and its countdown.
+     * @param {object} context
+     * @param {object} displayRect
+     */
+    function drawReading(context, displayRect) {
+        var seconds = Math.max(1, Math.ceil((readingUntil - Date.now()) / 1000));
+        context.fillStyle = '#FFFFFF';
+        context.textAlign = 'center';
+        context.font = "18px Audiowide";
+        context.fillText(M.util.get_string('sassy_reading', 'mod_quizgame'), displayRect.width / 2,
+            displayRect.height / 2);
+        context.font = "36px Audiowide";
+        context.fillText(String(seconds), displayRect.width / 2, displayRect.height / 2 + 45);
+    }
+
+    /**
+     * Draw the current pause message over a dark band, with the fire-to-continue prompt.
+     * @param {object} context
+     * @param {object} displayRect
+     */
+    function drawPause(context, displayRect) {
+        var bandHeight = Math.min(displayRect.height, 150);
+        var top = (displayRect.height - bandHeight) / 2;
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(0, top, displayRect.width, bandHeight);
+        context.fillStyle = '#FFCC00';
+        context.font = "20px Audiowide";
+        context.textAlign = 'center';
+        wrapText(context, messageQueue[0], false, 24, displayRect.width * 0.85, displayRect.width / 2, top + 15);
+        context.fillStyle = '#FFFFFF';
+        context.font = "14px Audiowide";
+        context.fillText(M.util.get_string('sassy_continue', 'mod_quizgame'), displayRect.width / 2, top + bandHeight - 15);
     }
 
     /**
@@ -526,6 +899,15 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     function update(bounds, objects, particles) {
         var i = 0;
         checkLevelEmpty();
+        if (isReading() && Date.now() >= readingUntil) {
+            readingUntil = 0;
+            var spawn = pendingSpawn;
+            pendingSpawn = null;
+            if (spawn) {
+                spawn();
+            }
+        }
+        updateBoss(bounds);
         for (i = 0; i < 3; i++) {
             particles.push(new Star(bounds));
         }
@@ -650,10 +1032,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     Player.prototype = Object.create(GameObject.prototype);
     Player.prototype.update = function(bounds) {
         if (mouseDown || touchDown) {
+            // Reversed controls swap left and right for pointer steering too.
+            var steer = levelReversed ? -1 : 1;
             if (this.x < this.mouse.x - (this.image.width)) {
-                player.direction.x = 1;
+                player.direction.x = steer;
             } else if (this.x > this.mouse.x) {
-                player.direction.x = -1;
+                player.direction.x = -steer;
             } else {
                 player.direction.x = 0;
             }
@@ -679,16 +1063,29 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     };
 
     Player.prototype.Shoot = function() {
+        if (!canFire()) {
+            return;
+        }
         playSound("laser");
-        gameObjects.unshift(new Laser(player.x, player.y, true, 24));
+        var laser = new Laser(player.x, player.y, true, 24);
+        laser.playerShot = true;
+        gameObjects.unshift(laser);
         canShoot = false;
     };
 
     Player.prototype.die = function() {
+        if (!this.alive) {
+            return;
+        }
         GameObject.prototype.die.call(this);
         playSound("explosion");
         spray(this.x + this.image.width / 2, this.y + this.image.height / 2, 200, "#FFCC00");
-        this.lastScore = score;
+        if (boss.started) {
+            // The finale ends the game itself, once the score has drained away.
+            bossPlayerDestroyed();
+            return;
+        }
+        this.lastScore = displayScore();
         endGame();
     };
 
@@ -760,10 +1157,21 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
 
         GameObject.prototype.update.call(this, bounds);
 
+        if (this.isDodging()) {
+            this.dodge();
+        }
+
         this.movementClock--;
 
         if (this.movementClock <= 0) {
-            this.direction.x = Math.floor(Math.random() * 3) - 1;
+            if (aggression > 0 && Math.random() < aggression / 5) {
+                // Return fire: home in on the player.
+                var centre = this.x + this.image.width / 2;
+                var target = player.x + player.image.width / 2;
+                this.direction.x = Math.abs(target - centre) < 4 ? 0 : Math.sign(target - centre);
+            } else {
+                this.direction.x = Math.floor(Math.random() * 3) - 1;
+            }
             this.movementClock = (2 + Math.random()) * 30;
         }
 
@@ -776,7 +1184,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 laser.direction.y = 1;
                 laser.friendly = false;
                 gameObjects.unshift(laser);
-                this.shotClock = (1 + Math.random()) * this.shotFrequency;
+                this.shotClock = (1 + Math.random()) * this.shotFrequency / (1 + aggression * 0.6);
             }
         }
 
@@ -835,6 +1243,47 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         // Default behaviour, to be overridden.
         shot.die();
         this.die();
+    };
+
+    /**
+     * Whether this ship is in a dodge round: it avoids every friendly shot and the player's ship.
+     * @return {boolean}
+     */
+    Enemy.prototype.isDodging = function() {
+        return levelDodge && this.levelnum === levelNumber && boss.style === '';
+    };
+
+    /**
+     * Sidestep the friendly lasers that would hit this ship, and the player's ship.
+     */
+    Enemy.prototype.dodge = function() {
+        var ship = this;
+        var left = ship.x;
+        var right = ship.x + ship.image.width;
+        var centre = (left + right) / 2;
+        var push = 0;
+        /**
+         * Push the ship away from a threat whose horizontal extent overlaps it.
+         * @param {number} tleft
+         * @param {number} tright
+         */
+        var avoid = function(tleft, tright) {
+            if (tright > left - 8 && tleft < right + 8) {
+                push += (tleft + tright) / 2 > centre ? -1 : 1;
+            }
+        };
+        gameObjects.forEach(function(object) {
+            if (object instanceof Laser && object.friendly && object.alive &&
+                    object.y > ship.y - object.image.height && object.y - ship.y < 260) {
+                avoid(object.x, object.x + object.image.width);
+            }
+        });
+        if (player.alive && Math.abs(player.y - ship.y) < 120) {
+            avoid(player.x, player.x + player.image.width);
+        }
+        if (push !== 0) {
+            ship.x += (push > 0 ? 1 : -1) * 12;
+        }
     };
 
     /**
@@ -983,6 +1432,140 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     };
 
     /**
+     * A ship of the swarm finale: it dives at the player and fires all the time. No server calls:
+     * shooting one just explodes it, and the finale sends in another.
+     * @param {object} bounds
+     */
+    function SwarmEnemy(bounds) {
+        var labels = decoyLabels.length ? decoyLabels : (config.decoylabels || []);
+        var text = labels.length ? labels[Math.floor(Math.random() * labels.length)] : '';
+        Enemy.call(this, "pix/enemy.png", Math.random() * bounds.width, -40 - Math.random() * bounds.height / 3, text, '');
+        this.speed = 3 + Math.random() * 3;
+        this.shotFrequency = 18;
+        this.shotClock = Math.random() * this.shotFrequency;
+    }
+
+    SwarmEnemy.prototype = Object.create(Enemy.prototype);
+
+    SwarmEnemy.prototype.update = function(bounds) {
+        var centre = this.x + this.image.width / 2;
+        if (player.alive) {
+            // Dive at the player.
+            var target = player.x + player.image.width / 2;
+            this.x += Math.max(-4, Math.min(4, (target - centre) * 0.06));
+            this.shotClock--;
+            if (this.shotClock <= 0 && this.y > 0 && this.y < player.y) {
+                playSound("enemylaser");
+                var laser = new Laser(this.x, this.y, false, 14);
+                laser.direction.y = 1;
+                gameObjects.unshift(laser);
+                this.shotClock = (0.5 + Math.random()) * this.shotFrequency;
+            }
+        }
+        this.y += this.speed;
+        if (this.y > bounds.height + this.image.height) {
+            // Round again from the top.
+            this.y = -this.image.height - Math.random() * 60;
+            this.x = Math.random() * bounds.width;
+        }
+    };
+
+    SwarmEnemy.prototype.gotShot = function(shot) {
+        shot.die();
+        this.die(true);
+    };
+
+    /**
+     * The big boss of the finale: it enters, charges its cannon and destroys the player with a wide beam.
+     * @param {object} bounds
+     */
+    function BossShip(bounds) {
+        GameObject.call(this, "pix/bossship.png", bounds.width / 2, 0);
+        this.width = (player.image.width || 32) * 2;
+        this.height = (player.image.height || 32) * 2;
+        this.x = bounds.width / 2 - this.width / 2;
+        this.y = -this.height;
+        this.phase = 'enter';
+        this.clock = 0;
+    }
+
+    BossShip.prototype = Object.create(GameObject.prototype);
+
+    BossShip.prototype.update = function(bounds) {
+        var target = player.x + player.image.width / 2 - this.width / 2;
+        this.clock++;
+        if (this.phase === 'enter') {
+            this.y += 4;
+            this.x += (target - this.x) * 0.1;
+            if (this.y >= bounds.height * 0.12) {
+                this.phase = 'charge';
+                this.clock = 0;
+                playSound("bosslaser");
+            }
+        } else if (this.phase === 'charge') {
+            // Aim while the cannon charges (the sound's charge lasts about 0.55 s).
+            this.x += (target - this.x) * 0.15;
+            if (this.clock >= 14) {
+                this.phase = 'fire';
+                this.clock = 0;
+                if (player.alive) {
+                    // The beam is fatal whatever lives are left.
+                    player.die();
+                }
+            }
+        } else if (this.phase === 'fire') {
+            if (this.clock % 2 === 0) {
+                spray(this.x + this.width / 2, bounds.height - 4, 12, "#FFFF66");
+            }
+            if (this.clock >= 30) {
+                this.phase = 'leave';
+                this.clock = 0;
+            }
+        } else if (this.phase === 'leave') {
+            this.y -= 3;
+            if (this.y < -this.height) {
+                this.alive = false;
+            }
+        }
+    };
+
+    BossShip.prototype.draw = function(context) {
+        var muzzleX = this.x + this.width / 2;
+        var muzzleY = this.y + this.height - 2;
+        if (this.phase === 'fire') {
+            // A wide procedural beam with a flickering core.
+            var beamWidth = Math.max(this.width * 1.2, (player.image.width || 32) * 3) * (0.9 + Math.random() * 0.2);
+            var beamHeight = displayRect.height - muzzleY;
+            var layers = [
+                {scale: 1, colour: 'rgba(255, 0, 0, 0.45)'},
+                {scale: 0.7, colour: 'rgba(255, 120, 0, 0.7)'},
+                {scale: 0.4, colour: 'rgba(255, 255, 0, 0.9)'},
+                {scale: 0.15, colour: '#FFFFFF'}
+            ];
+            layers.forEach(function(layer) {
+                var w = beamWidth * layer.scale;
+                context.fillStyle = layer.colour;
+                context.fillRect(muzzleX - w / 2, muzzleY, w, beamHeight);
+            });
+        } else if (this.phase === 'charge') {
+            var radius = 4 + this.clock * 1.4 + Math.random() * 3;
+            context.fillStyle = 'rgba(255, 255, 0, 0.6)';
+            context.beginPath();
+            context.arc(muzzleX, muzzleY, radius, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = '#FFFFFF';
+            context.beginPath();
+            context.arc(muzzleX, muzzleY, radius / 2, 0, Math.PI * 2);
+            context.fill();
+        }
+        context.drawImage(this.image, this.x, this.y, this.width, this.height);
+    };
+
+    BossShip.prototype.getRect = function() {
+        return new Rectangle(this.x, this.y, this.width, this.height);
+    };
+
+    /**
      * Constructor for laser shots extends GameObject
      * @param {int} x
      * @param {int} y
@@ -1003,6 +1586,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             this.x > bounds.width ||
             this.y < bounds.y - this.image.height ||
             this.y > bounds.height) {
+            if (this.alive && this.playerShot && this.friendly && !this.hitSomething &&
+                    this.y < bounds.y - this.image.height) {
+                // A shot of the player that left the top without hitting anything.
+                reportMiss();
+            }
             this.alive = false;
         }
         this.velocity.y = this.laserSpeed * this.direction.y;
@@ -1111,13 +1699,24 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             }
         }
         if (object1 instanceof Laser && object2 instanceof Enemy) {
-            if (object1.friendly && objectsIntersect(object1, object2)) {
+            // In a dodge round no shot ever lands.
+            if (object1.friendly && !object2.isDodging() && objectsIntersect(object1, object2)) {
+                object1.hitSomething = true;
                 object2.gotShot(object1);
                 return true;
             }
         }
-        if (object1 instanceof Player && object2 instanceof Enemy) {
+        if (object1 instanceof Player && object2 instanceof SwarmEnemy) {
             if (objectsIntersect(object1, object2)) {
+                // A swarm ship ramming the player costs a life, not the whole game.
+                object1.gotShot(object2);
+                object2.die(true);
+                return true;
+            }
+            return false;
+        }
+        if (object1 instanceof Player && object2 instanceof Enemy) {
+            if (!object2.isDodging() && objectsIntersect(object1, object2)) {
                 object1.die();
                 return true;
             }
@@ -1219,7 +1818,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * level, charging what got away.
      */
     function checkLevelEmpty() {
-        if (!player || !player.alive || currentTeam.length === 0) {
+        if (!player || !player.alive || currentTeam.length === 0 || boss.style !== '') {
             return;
         }
         var busy = currentTeam.some(function(enemy) {
@@ -1322,14 +1921,22 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         var key = gameKey(e);
         if (key !== '') {
             e.preventDefault();
+            if (isPaused()) {
+                // One fire press per message; auto-repeat does not skip messages.
+                if (key === ' ' && !e.repeat) {
+                    canShoot = false;
+                    advanceMessage();
+                }
+                return;
+            }
             if (key === ' ' && player.alive && canShoot) {
                 player.Shoot();
             } else if (key === 'ArrowLeft') {
-                player.direction.x = -1;
+                player.direction.x = levelReversed ? 1 : -1;
             } else if (key === 'ArrowUp') {
                 player.direction.y = -1;
             } else if (key === 'ArrowRight') {
-                player.direction.x = 1;
+                player.direction.x = levelReversed ? -1 : 1;
             } else if (key === 'ArrowDown') {
                 player.direction.y = 1;
             }
@@ -1356,6 +1963,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {object} e
      */
     function mousedown(e) {
+        if (e.target === stage && isPaused()) {
+            advanceMessage();
+            return;
+        }
         if (e.target === stage) {
             var playerWasClicked = player.getRect().Contains({x: e.offsetX, y: e.offsetY});
             if (playerWasClicked && player.alive) {
@@ -1402,6 +2013,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {object} e
      */
     function touchstart(e) {
+        if (e.target === stage && isPaused()) {
+            // A tap reads on to the next message.
+            advanceMessage();
+            e.preventDefault();
+            return;
+        }
         if (e.target === stage) {
             if (player.alive && e.touches.length > 1) {
                 player.Shoot();
@@ -1491,6 +2108,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         }
         stage = document.getElementById("mod_quizgame_game");
         questions = JSON.parse(stage.dataset.questions || '[]');
+        var options = JSON.parse(stage.dataset.config || '{}') || {};
+        config = {
+            reportmisses: !!options.reportmisses,
+            sassy: !!options.sassy,
+            decoylabels: Array.isArray(options.decoylabels) ? options.decoylabels : []
+        };
         document.addEventListener('visibilitychange', visibilityChange, false);
         context = stage.getContext("2d");
         smallscreen();

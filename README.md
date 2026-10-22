@@ -50,21 +50,78 @@ The game runs in the browser, but the browser is never told which answers are co
 Each answer ship carries an opaque token; every shot is checked by the server, which also
 keeps the score.
 
+The points are set per activity under **Scoring** in the activity settings. *P* is
+**Points for a correct hit** (default 1000); *S* is the **Wrong-hit penalty schedule**
+(default `300`), a comma-separated list of penalties for the 1st, 2nd, 3rd... wrong hit
+within one question, whose last value repeats (e.g. `300,600,1000`).
+
 | Event | Points |
 |---|---|
-| Shooting a correct answer | +1000 × the answer's grade (fraction) |
-| Shooting a wrong or partial answer (the shot bounces back) | (fraction − 0.5) × 600 if that is negative, e.g. −300; otherwise 0 |
-| Matching a stem with its answer | +1000 ÷ the number of stems |
+| Shooting a correct answer | +*P* × the answer's grade (fraction) |
+| Shooting a wrong or partial answer (the shot bounces back) | −*S*[n] × (1 − 2 × fraction) for the n-th wrong hit in the question, if that is negative (e.g. −300 for a wrong answer); otherwise 0 |
+| Matching a stem with its answer | +*P* ÷ the number of stems (a wrong pair scores 0) |
 | A correct answer (or unmatched pair) leaving the screen | minus what it was worth |
+| A shot that hits nothing | −**Miss penalty** (default 0) |
+
+The defaults reproduce the scoring of earlier versions, under which guessing pays: with
+four answers, shooting at random still averages a profit. A schedule such as
+`300,600,1000` makes random guessing lose points on average. Misses are reported by the
+browser (the server cannot see a shot that hits nothing), so a tampered client can skip
+them, which only spares itself the penalty.
 
 Each question can be played once per round; after every question has been played the
-round starts again, faster. A recorded score never exceeds 1000 points per second that
+round starts again, faster. A recorded score never exceeds *P* points per second that
 levels were open, so even a player who knows every answer earns points at a human pace. When a recording player dies, the server stores the score it
 computed. If the page is closed mid-game, that game is recorded when the player starts
 the next one.
 
 Guests can play, and get the same checking, but nothing is recorded: recording needs the
 `mod/quizgame:play` capability (students, teachers and managers by default).
+
+Sassy enhancements
+==================
+
+An optional system, off by default (**Sassy enhancements** in the activity settings),
+that catches players who shoot at random instead of reading the question. Every rule is
+applied by the server, which keeps the score; the browser only plays the effects it is
+told to. Nothing is stored or reported: the state lives in the player's session and
+resets every game.
+
+- **Cheater mode** starts after *Wrong hits to trigger cheater mode* (default 3) wrong
+  hits counted across questions; decoy ships count, misses never do. A question answered
+  with no wrong hits resets the count, and *Clean questions to leave cheater mode*
+  (default 1) such questions end cheater mode. Each start is an **offence**; in cheater
+  mode every further run of that many wrong hits is another offence.
+- **Offence 1 is always "Read it first"**: a snarky message, then the question is shown on
+  its own for *Reading time* (default 5 s, not counted towards the points-per-second
+  limit) with firing disabled.
+- **Later offences** apply one of the enabled penalties, *In order* (decoy ships,
+  reversed controls, dodge round, return fire, score drain) or at *Random*:
+  - *Decoy ships*: joke-labelled extra ships that are always wrong, one more per further
+    wrong hit, up to *Maximum decoy ships* (default 3).
+  - *Reversed controls*: left and right swapped for one question.
+  - *Dodge round*: for one question every ship dodges every shot (and the player's ship),
+    so its points are lost.
+  - *Return fire*: enemies fire faster and home in on the player, more with each wrong hit.
+  - *Score drain*: the score ticks down at *Score drain start rate* (default 100 points per
+    second), *Score drain increase* (default 50 %) faster per wrong hit, never below 0.
+
+  Decoys, return fire and score drain last until the player leaves cheater mode.
+- **Boss finale**: the offence numbered *Offences before the boss finale* (default 4)
+  ends the game with a score of 0 after the boss lines ("This game is becoming more and
+  more like life. And you know what? Life ain't fair."). *Boss finale style*:
+  - *Big boss*: a boss ship twice the normal size destroys the player's ship with a huge
+    laser beam.
+  - *Swarm*: *Swarm size* (default 20) small ships pour in and attack non-stop until the
+    player has lost every life.
+  - *Random*: either, chosen by the server.
+
+Every penalty start pauses the game on a message until the player presses fire. The
+*Taunt messages*, *Decoy ship labels* and *Boss finale lines* are editable lists, one entry
+per line; `Line one || Line two` is a two-step prompt, and an empty list uses the
+built-in defaults. The "Read it first" and reversed-controls lines are language strings
+(`sassy_readfirst_msg`, `sassy_readfirst_help`, `sassy_reversed_msg`), changeable through
+language customisation.
 
 Grading
 =======
@@ -92,7 +149,7 @@ Completion
 
 Quizventure supports automatic completion based on a minimum game score: enable
 *Require score* in the activity completion settings and enter the score. A sensible
-target is `(number of questions) × 1000`.
+target is `(number of questions) × the points for a correct hit` (1000 by default).
 
 Question bank integration
 =========================

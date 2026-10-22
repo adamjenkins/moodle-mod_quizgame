@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/quizgame/db" VERSION="20260622" COMMENT="XMLDB file for Moodle mod/quizgame"
+<XMLDB PATH="mod/quizgame/db" VERSION="20261022" COMMENT="XMLDB file for Moodle mod/quizgame"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -18,6 +18,24 @@
         <FIELD NAME="grade" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="100" SEQUENCE="false" COMMENT="Grade scale"/>
         <FIELD NAME="gradepassingscore" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Game score that earns the maximum gradebook grade (0 = raw score)"/>
         <FIELD NAME="completionscore" TYPE="int" LENGTH="20" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="pointscorrect" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1000" SEQUENCE="false" COMMENT="Points for a correct hit (multiplied by the answer's fraction)"/>
+        <FIELD NAME="wrongpenalties" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="300" SEQUENCE="false" COMMENT="Comma-separated penalties for the 1st, 2nd, ... wrong hit in one question; the last value repeats"/>
+        <FIELD NAME="misspenalty" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Points lost for a shot that hits nothing"/>
+        <FIELD NAME="sassy" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether Sassy enhancements (cheater mode) are enabled"/>
+        <FIELD NAME="sassywrongtrigger" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="3" SEQUENCE="false" COMMENT="Wrong hits (across questions, reset by a clean question) that trigger cheater mode"/>
+        <FIELD NAME="sassycleanneeded" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Clean questions needed to leave cheater mode"/>
+        <FIELD NAME="sassybosslimit" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="4" SEQUENCE="false" COMMENT="Offence number that starts the boss finale"/>
+        <FIELD NAME="sassyreadtime" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Seconds the question is shown alone in a Read it first penalty"/>
+        <FIELD NAME="sassypenalties" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="decoys,reversed,dodge,returnfire,drain" SEQUENCE="false" COMMENT="Comma-separated keys of the enabled higher-tier penalties"/>
+        <FIELD NAME="sassyorder" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Higher-tier penalty selection: 0 in order, 1 random"/>
+        <FIELD NAME="sassymaxdecoys" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="3" SEQUENCE="false" COMMENT="Maximum number of decoy ships per question"/>
+        <FIELD NAME="sassydrainrate" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="100" SEQUENCE="false" COMMENT="Score drain start rate in points per second"/>
+        <FIELD NAME="sassydrainincrease" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="50" SEQUENCE="false" COMMENT="Score drain rate increase per further wrong hit, in percent"/>
+        <FIELD NAME="sassybossstyle" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Boss finale style: 0 big boss, 1 swarm, 2 random"/>
+        <FIELD NAME="sassyswarmsize" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="20" SEQUENCE="false" COMMENT="Number of ships in a swarm boss finale"/>
+        <FIELD NAME="sassytaunts" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Taunt messages, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassydecoylabels" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Decoy ship labels, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassybosslines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Boss finale lines, one per line (empty: built-in defaults)"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

@@ -155,6 +155,48 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026100100, 'quizgame');
     }
 
+    if ($oldversion < 2026102200) {
+        // Configurable scoring and Sassy enhancements. The defaults reproduce the scoring of earlier
+        // versions (1000 points per correct hit, 300 per wrong hit, no miss penalty, Sassy off).
+        $table = new xmldb_table('quizgame');
+        $fields = [
+            new xmldb_field('pointscorrect', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '1000', 'completionscore'),
+            new xmldb_field('wrongpenalties', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, '300', 'pointscorrect'),
+            new xmldb_field('misspenalty', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'wrongpenalties'),
+            new xmldb_field('sassy', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'misspenalty'),
+            new xmldb_field('sassywrongtrigger', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '3', 'sassy'),
+            new xmldb_field('sassycleanneeded', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '1', 'sassywrongtrigger'),
+            new xmldb_field('sassybosslimit', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '4', 'sassycleanneeded'),
+            new xmldb_field('sassyreadtime', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '5', 'sassybosslimit'),
+            new xmldb_field(
+                'sassypenalties',
+                XMLDB_TYPE_CHAR,
+                '255',
+                null,
+                XMLDB_NOTNULL,
+                null,
+                'decoys,reversed,dodge,returnfire,drain',
+                'sassyreadtime'
+            ),
+            new xmldb_field('sassyorder', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'sassypenalties'),
+            new xmldb_field('sassymaxdecoys', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '3', 'sassyorder'),
+            new xmldb_field('sassydrainrate', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '100', 'sassymaxdecoys'),
+            new xmldb_field('sassydrainincrease', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '50', 'sassydrainrate'),
+            new xmldb_field('sassybossstyle', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'sassydrainincrease'),
+            new xmldb_field('sassyswarmsize', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '20', 'sassybossstyle'),
+            new xmldb_field('sassytaunts', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassyswarmsize'),
+            new xmldb_field('sassydecoylabels', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassytaunts'),
+            new xmldb_field('sassybosslines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassydecoylabels'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_mod_savepoint(true, 2026102200, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }

@@ -48,7 +48,8 @@ $functions = [
     'mod_quizgame_answer' => [
         'classname'     => 'mod_quizgame_external',
         'methodname'    => 'answer',
-        'description'   => 'Check a shot or the end of a level and update the server-side score',
+        'description'   => 'Start a level, check a shot, a miss or the end of a level, update the server-side score '
+            . 'and return the Sassy enhancements effects to play',
         'type'          => 'write',
         'ajax'          => true,
         'capabilities'  => 'mod/quizgame:view',

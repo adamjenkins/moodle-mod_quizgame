@@ -60,6 +60,46 @@ function quizgame_supports($feature) {
 }
 
 /**
+ * The higher-tier Sassy penalties, in severity order (the "In order" selection order).
+ *
+ * @return string[] Penalty keys, as stored in the sassypenalties column
+ */
+function quizgame_sassy_penalty_keys(): array {
+    return ['decoys', 'reversed', 'dodge', 'returnfire', 'drain'];
+}
+
+/**
+ * Convert the settings form data into the stored form of the scoring and Sassy settings.
+ *
+ * Strips spaces from the wrong-hit penalty schedule and turns the sassypenalty_<key> checkboxes
+ * into the comma-separated sassypenalties column. Data without the checkboxes (not from the
+ * settings form, e.g. a data generator) keeps any sassypenalties value it already has.
+ *
+ * @param stdClass $data Instance data, changed in place
+ */
+function quizgame_process_options(stdClass $data): void {
+    if (isset($data->wrongpenalties)) {
+        $data->wrongpenalties = preg_replace('/\s+/', '', (string) $data->wrongpenalties);
+    }
+
+    $keys = quizgame_sassy_penalty_keys();
+    $hascheckboxes = false;
+    $enabled = [];
+    foreach ($keys as $key) {
+        $element = 'sassypenalty_' . $key;
+        if (property_exists($data, $element)) {
+            $hascheckboxes = true;
+            if (!empty($data->$element)) {
+                $enabled[] = $key;
+            }
+        }
+    }
+    if ($hascheckboxes) {
+        $data->sassypenalties = implode(',', $enabled);
+    }
+}
+
+/**
  * Saves a new instance of the quizgame into the database
  *
  * Given an object containing all the necessary data,
@@ -75,6 +115,7 @@ function quizgame_add_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mform
     global $DB;
 
     $quizgame->timecreated = time();
+    quizgame_process_options($quizgame);
     $quizgame->id = $DB->insert_record('quizgame', $quizgame);
 
     quizgame_grade_item_update($quizgame);
@@ -98,6 +139,7 @@ function quizgame_update_instance(stdClass $quizgame, ?mod_quizgame_mod_form $mf
 
     $quizgame->timemodified = time();
     $quizgame->id = $quizgame->instance;
+    quizgame_process_options($quizgame);
 
     $result = $DB->update_record('quizgame', $quizgame);
 

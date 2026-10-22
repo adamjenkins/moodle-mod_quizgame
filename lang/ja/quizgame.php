@@ -18,6 +18,7 @@
  * Japanese strings for quizgame
  *
  * @package    mod_quizgame
+ * @copyright  2014 John Okely <john@moodle.com>
  * @copyright  2026 Adam Jenkins <adam@wisecat.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -36,9 +37,9 @@ $string['completionscoredesc'] = '学生が達成する必要のある最低ス�
 $string['completionscoregroup'] = 'スコアを必須にする';
 $string['completionscoregroup_help'] = '有効にした場合、活動を完了とするために最低スコアの達成を必須にできます。
 
-各問題は最初の挑戦で正解すると1000点になるため、次の値を目安に設定するとよいでしょう:
+各問題は最初の挑戦で正解すると「正解の得点」(デフォルトは1000点) になるため、次の値を目安に設定するとよいでしょう:
 
-(問題数 x 1000)';
+(問題数 x 正解の得点)';
 $string['currentcategory'] = '現在のカテゴリ (あなたが使用できない問題バンクのもの)';
 $string['emptyquiz'] = '選択したカテゴリには多肢選択問題がありません。';
 $string['endofgame'] = 'あなたのスコア: {$a} 。スペースキーを押すかクリックすると再スタートします。';
@@ -48,7 +49,7 @@ $string['eventgamestarted'] = 'クイズベンチャのゲームが開始され�
 $string['fullscreen'] = 'フルスクリーン';
 $string['gamecanvaslabel'] = 'クイズベンチャのゲーム画面です。正解が書かれた宇宙船を撃ってください。矢印キーで移動し、スペースキーで撃ちます。';
 $string['gradepassingscore'] = '最大評点となるゲームスコア';
-$string['gradepassingscore_help'] = '評定表で最大評点を得るために学生が到達する必要のあるゲームスコアです。
+$string['gradepassingscore_help'] = '評定表で最大評点を得るために学生が到達する必要のあるゲームスコアです。各問題は最初の挑戦で正解すると「正解の得点」(デフォルトは1000点) になります。
 
 例えば、最大評点が100でこの値を10000に設定した場合、ゲームで5000点を取った学生の評点は50/100、10000点以上を取った学生の評点は100/100になります。
 
@@ -69,6 +70,7 @@ $string['invalidgameanswer'] = 'その解答はこの問題のものではあり
 $string['invalidgamequestion'] = 'その問題は現在のゲームに含まれていません。ページを再読み込みして、もう一度プレイしてください。';
 $string['invalidquestioncategory'] = 'このコースの問題バンクから問題カテゴリを選択してください。';
 $string['loadinggame'] = 'ゲームを読み込んでいます';
+$string['misspenalty'] = '外れたショットのペナルティ';
 $string['modulename'] = 'クイズベンチャ';
 $string['modulename_help'] = '学生が勉強をつい先延ばしにしていませんか? 勉強の代わりにゲームばかりしていませんか? クイズベンチャなら、その両方を同時にさせることができます!
 
@@ -84,6 +86,7 @@ $string['playedxtimeswithhighscore'] = '{$a->times} 回プレイしました。�
 $string['playerscores'] = 'プレイヤスコア';
 $string['pluginadministration'] = 'クイズベンチャ管理';
 $string['pluginname'] = 'クイズベンチャ';
+$string['pointscorrect'] = '正解の得点';
 $string['privacy:metadata:quizgame_scores'] = 'クイズベンチャ活動におけるユーザのスコアに関する情報';
 $string['privacy:metadata:quizgame_scores:quizgameid'] = 'ユーザがプレイした クイズベンチャ活動のID';
 $string['privacy:metadata:quizgame_scores:score'] = 'そのプレイにおけるユーザのスコア';
@@ -107,11 +110,40 @@ $string['quizgame:viewallscores'] = 'プレイヤスコアを表示する';
 $string['quizgamename'] = 'クイズベンチャ名';
 $string['quizgamename_help'] = 'この クイズベンチャの名称は何ですか?';
 $string['removescores'] = 'すべてのユーザのスコアを削除する';
+$string['sassy'] = 'サッシーモード';
+$string['sassy_enable'] = 'サッシーモードを有効にする';
+$string['sassybosslimit'] = 'ボス戦までの違反回数';
+$string['sassybosslines'] = 'ボス戦のメッセージ';
+$string['sassybossstyle'] = 'ボス戦のスタイル';
+$string['sassybossstyle_big'] = '巨大ボス';
+$string['sassybossstyle_random'] = 'ランダム';
+$string['sassybossstyle_swarm'] = '大群';
+$string['sassycleanneeded'] = 'チーターモード解除に必要な完全正解の問題数';
+$string['sassydecoylabels'] = 'おとり宇宙船のラベル';
+$string['sassydrainincrease'] = '不正解ごとのスコア減少の増加率 (%)';
+$string['sassydrainrate'] = 'スコア減少の初期速度 (1秒あたりの点数)';
+$string['sassyhdr'] = 'サッシーモード';
+$string['sassymaxdecoys'] = 'おとり宇宙船の最大数';
+$string['sassyorder'] = 'ペナルティの選択方法';
+$string['sassyorder_inorder'] = '順番';
+$string['sassyorder_random'] = 'ランダム';
+$string['sassypenalties'] = '有効なペナルティ';
+$string['sassypenalty_decoys'] = 'おとり宇宙船';
+$string['sassypenalty_dodge'] = '回避ラウンド';
+$string['sassypenalty_drain'] = 'スコア減少';
+$string['sassypenalty_returnfire'] = '反撃';
+$string['sassypenalty_reversed'] = '操作の左右反転';
+$string['sassyreadtime'] = '「まず読む」の読み時間 (秒)';
+$string['sassyswarmsize'] = '大群の宇宙船の数';
+$string['sassytaunts'] = '挑発メッセージ';
+$string['sassywrongtrigger'] = 'チーターモードになる不正解の回数';
 $string['scalesnotsupported'] = 'クイズベンチャはゲームスコアで評定するため、尺度には対応していません。「点」または「なし」を選択してください。';
 $string['score'] = 'スコア: {$a->score} ライフ: {$a->lives}';
 $string['scoreheader'] = 'スコア';
 $string['scoreslink'] = 'すべての受験を表示する';
 $string['scoreslinkhelp'] = 'すべてのプレイヤの受験およびスコアを表示する';
+$string['scoringhdr'] = '得点';
 $string['sound'] = 'サウンド';
 $string['spacetostart'] = 'スペースキーを押すかクリックしてスタート';
+$string['wrongpenalties'] = '不正解のペナルティ表';
 $string['yourbestscore'] = 'これまでのあなたの最高スコア: {$a}';
