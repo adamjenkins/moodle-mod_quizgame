@@ -244,6 +244,13 @@ final class backup_restore_test extends \advanced_testcase {
                 'rewardbonuspoints' => 2500,
                 'rewardpraise' => 0,
                 'rewardpraiselines' => "Great flying\nSuper",
+                'rewardmissbreak' => 1,
+                'rewardbonusships' => 7,
+                'rewardbonusspeed' => 250,
+                'startlives' => 6,
+                'speedramp' => 12,
+                'speedrampstart' => 2,
+                'speedroundjump' => 0,
             ],
             [
                 'rewards' => 0,
@@ -257,6 +264,13 @@ final class backup_restore_test extends \advanced_testcase {
                 'rewardbonuspoints' => 99999,
                 'rewardpraise' => 1,
                 'rewardpraiselines' => '',
+                'rewardmissbreak' => 0,
+                'rewardbonusships' => 1,
+                'rewardbonusspeed' => 25,
+                'startlives' => 1,
+                'speedramp' => 0,
+                'speedrampstart' => 1,
+                'speedroundjump' => 200,
             ],
         ];
         foreach ($variants as $i => $settings) {

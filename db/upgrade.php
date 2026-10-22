@@ -226,6 +226,29 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026102201, 'quizgame');
     }
 
+    if ($oldversion < 2026102202) {
+        // Miss-resets-combo option, bonus ship count and speed, starting lives and the enemy speed-up.
+        // The defaults keep today's game, except the speed-up per question, which starts only once
+        // the score target is reached.
+        $table = new xmldb_table('quizgame');
+        $fields = [
+            new xmldb_field('rewardmissbreak', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'rewardpraiselines'),
+            new xmldb_field('rewardbonusships', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '2', 'rewardmissbreak'),
+            new xmldb_field('rewardbonusspeed', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '100', 'rewardbonusships'),
+            new xmldb_field('startlives', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '3', 'rewardbonusspeed'),
+            new xmldb_field('speedramp', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '5', 'startlives'),
+            new xmldb_field('speedrampstart', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'speedramp'),
+            new xmldb_field('speedroundjump', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '30', 'speedrampstart'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_mod_savepoint(true, 2026102202, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }

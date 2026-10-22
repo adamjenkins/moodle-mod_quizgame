@@ -47,6 +47,13 @@
         <FIELD NAME="rewardbonuspoints" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1000" SEQUENCE="false" COMMENT="Points per bonus ship (not multiplied)"/>
         <FIELD NAME="rewardpraise" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether praise messages are enabled"/>
         <FIELD NAME="rewardpraiselines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Praise messages, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="rewardmissbreak" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether a miss resets the combo multiplier"/>
+        <FIELD NAME="rewardbonusships" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="2" SEQUENCE="false" COMMENT="Bonus ships per bonus round"/>
+        <FIELD NAME="rewardbonusspeed" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="100" SEQUENCE="false" COMMENT="Bonus ship speed, percent of the normal speed"/>
+        <FIELD NAME="startlives" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="3" SEQUENCE="false" COMMENT="Lives a game starts with"/>
+        <FIELD NAME="speedramp" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Enemy speed-up per question, percent (0 = off)"/>
+        <FIELD NAME="speedrampstart" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the speed-up starts: 0 score target, 1 after the first round, 2 from the second question"/>
+        <FIELD NAME="speedroundjump" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="30" SEQUENCE="false" COMMENT="Enemy speed-up per new round, percent (0 = off)"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

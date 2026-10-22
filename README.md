@@ -149,19 +149,43 @@ cheater mode builds the streak as usual, so redemption starts earning rewards.
   *Maximum multiplier* (default 4). The HUD shows "COMBO ×3" and flashes when it rises
   or breaks. Penalties, score drain, missed-at-close points and bonus ships are never
   multiplied. Combos can multiply a perfect game's score up to the maximum, so raise the
-  *Game score for maximum grade* and any completion score to match.
+  *Game score for maximum grade* and any completion score to match. With *A miss resets
+  the combo* ticked (off by default), a shot that hits nothing also sets the multiplier
+  back to ×1, while the clean streak towards extra lives and bonus rounds is kept.
 - **Extra life**: one more life every *Clean questions in a row per extra life* (default
-  5), while the player has fewer than *Maximum lives* (default 5; a game starts with 3).
+  5), while the player has fewer than *Maximum lives* (default 5; at least the starting
+  lives, see *Difficulty*).
 - **Bonus round**: after every *Clean questions in a row for bonus round* (default 5),
   the next question is preceded by a bonus round ("Now THAT's how you play! Bonus
-  round!"): two bonus ships worth *Points per bonus ship* (default 1000) each, which never
-  fire, cannot hurt the player, never dodge and cost nothing if they leave. With the
+  round!"): *Bonus ships per round* (default 2) bonus ships in different colours, worth
+  *Points per bonus ship* (default 1000) each and flying at *Bonus ship speed* (a
+  percentage of their normal speed, default 100), which never fire, cannot hurt the
+  player, never dodge and cost nothing if they leave. With the
   defaults the extra life and the bonus round arrive together; the life is shown first.
 - **Praise messages**: a short line shown without pausing the game when the combo rises,
   a life is earned, a bonus round starts or the player leaves cheater mode. The
   *Praise messages* list (one per line, empty for the built-in ones) is used for the combo
   and the extra life; the bonus-round and redemption lines are language strings
   (`rewards_bonus_msg`, `rewards_redemption_msg`).
+
+Difficulty
+==========
+
+Under **Difficulty** in the activity settings:
+
+- **Starting lives** (default 3): the lives a game starts with.
+- **Speed-up per question** (default 5%): once started, every new question makes the
+  enemy ships this much faster, so the game keeps getting harder until it ends. 0 turns it
+  off. **Speed-up starts**: once the score target is reached (the default; the completion
+  score if the activity has one, otherwise the game score for maximum grade, and after the
+  first round when there is neither), after the first round, or from the second question.
+  Once started it runs to the end of the game.
+- **Speed-up per round** (default 30%, as in earlier versions): each time every question
+  has been played and the questions start again, the ships get this much faster. 0 turns
+  it off.
+
+Speed only makes the game harder, never adds points, so it is applied by the browser; the
+server's scoring and points-per-second limit are unchanged.
 
 Grading
 =======

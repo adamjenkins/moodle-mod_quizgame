@@ -71,11 +71,8 @@ class mod_quizgame_renderer extends plugin_renderer_base {
 
         $jsonflags = JSON_HEX_AMP | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT
             | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR;
-        // Only what the client needs to know: whether to report misses, and whether Sassy effects can come.
-        $config = [
-            'reportmisses' => (int) ($quizgame->misspenalty ?? 0) > 0,
-            'sassy' => !empty($quizgame->sassy),
-        ];
+        // Only what the client needs to know (game_session::client_config()).
+        $config = $session->client_config();
         if ($config['sassy']) {
             // Labels for the swarm finale's ships, which may come before any level had decoys.
             $config['decoylabels'] = $session->decoy_labels();

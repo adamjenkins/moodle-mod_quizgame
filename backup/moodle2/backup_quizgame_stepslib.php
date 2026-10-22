@@ -83,6 +83,13 @@ class backup_quizgame_activity_structure_step extends backup_activity_structure_
             'rewardbonuspoints',
             'rewardpraise',
             'rewardpraiselines',
+            'rewardmissbreak',
+            'rewardbonusships',
+            'rewardbonusspeed',
+            'startlives',
+            'speedramp',
+            'speedrampstart',
+            'speedroundjump',
             ]
         );
 

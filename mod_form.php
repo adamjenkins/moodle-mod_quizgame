@@ -96,6 +96,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
         $this->add_scoring_elements();
         $this->add_sassy_elements();
         $this->add_rewards_elements();
+        $this->add_difficulty_elements();
 
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
@@ -200,7 +201,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $mform->hideIf($toggle, 'rewards', 'notchecked');
 
             foreach ($fields as $field) {
-                if ($field === 'rewardpraiselines') {
+                if ($field === 'rewardmissbreak') {
+                    $mform->addElement('advcheckbox', $field, get_string($field, 'quizgame'));
+                    $mform->setDefault($field, 0);
+                } else if ($field === 'rewardpraiselines') {
                     $mform->addElement('textarea', $field, get_string($field, 'quizgame'), ['rows' => 6, 'cols' => 60]);
                     $mform->setType($field, PARAM_TEXT);
                     // New instances start with the built-in list, so teachers can see and edit it.
@@ -224,9 +228,9 @@ class mod_quizgame_mod_form extends moodleform_mod {
      */
     protected static function reward_toggles(): array {
         return [
-            'rewardcombo' => ['rewardmaxmult'],
+            'rewardcombo' => ['rewardmaxmult', 'rewardmissbreak'],
             'rewardlife' => ['rewardlifestreak', 'rewardmaxlives'],
-            'rewardbonus' => ['rewardbonusstreak', 'rewardbonuspoints'],
+            'rewardbonus' => ['rewardbonusstreak', 'rewardbonuspoints', 'rewardbonusships', 'rewardbonusspeed'],
             'rewardpraise' => ['rewardpraiselines'],
         ];
     }
@@ -240,10 +244,57 @@ class mod_quizgame_mod_form extends moodleform_mod {
         return [
             'rewardmaxmult' => [4, 1, 10],
             'rewardlifestreak' => [5, 1, 50],
-            // A game starts with 3 lives, so a lower maximum would never award one.
-            'rewardmaxlives' => [5, 3, 10],
+            // Validation also keeps it at least the starting lives.
+            'rewardmaxlives' => [5, 1, 10],
             'rewardbonusstreak' => [5, 1, 50],
             'rewardbonuspoints' => [1000, 1, 100000],
+            'rewardbonusships' => [2, 1, 10],
+            'rewardbonusspeed' => [100, 25, 400],
+        ];
+    }
+
+    /**
+     * Add the Difficulty section: starting lives and how the enemy ships speed up.
+     */
+    protected function add_difficulty_elements(): void {
+        $mform = $this->_form;
+
+        $mform->addElement('header', 'speedhdr', get_string('speedhdr', 'quizgame'));
+
+        $intfields = self::difficulty_int_fields();
+        foreach (['startlives', 'speedramp'] as $field) {
+            $mform->addElement('text', $field, get_string($field, 'quizgame'), ['size' => '6']);
+            $mform->setType($field, PARAM_INT);
+            $mform->setDefault($field, $intfields[$field][0]);
+            $mform->addHelpButton($field, $field, 'quizgame');
+        }
+
+        $options = [
+            0 => get_string('speedrampstart_target', 'quizgame'),
+            1 => get_string('speedrampstart_firstround', 'quizgame'),
+            2 => get_string('speedrampstart_second', 'quizgame'),
+        ];
+        $mform->addElement('select', 'speedrampstart', get_string('speedrampstart', 'quizgame'), $options);
+        $mform->setDefault('speedrampstart', 0);
+        $mform->addHelpButton('speedrampstart', 'speedrampstart', 'quizgame');
+        $mform->hideIf('speedrampstart', 'speedramp', 'eq', 0);
+
+        $mform->addElement('text', 'speedroundjump', get_string('speedroundjump', 'quizgame'), ['size' => '6']);
+        $mform->setType('speedroundjump', PARAM_INT);
+        $mform->setDefault('speedroundjump', $intfields['speedroundjump'][0]);
+        $mform->addHelpButton('speedroundjump', 'speedroundjump', 'quizgame');
+    }
+
+    /**
+     * The whole-number Difficulty settings with their default and allowed range.
+     *
+     * @return array field name => [default, minimum, maximum]
+     */
+    protected static function difficulty_int_fields(): array {
+        return [
+            'startlives' => [3, 1, 10],
+            'speedramp' => [5, 0, 50],
+            'speedroundjump' => [30, 0, 200],
         ];
     }
 
@@ -435,6 +486,18 @@ class mod_quizgame_mod_form extends moodleform_mod {
                     }
                 }
             }
+        }
+
+        foreach (self::difficulty_int_fields() as $field => [, $min, $max]) {
+            if (array_key_exists($field, $data)) {
+                self::validate_range($errors, $data, $field, $min, $max);
+            }
+        }
+        if (
+            !empty($data['rewards']) && !empty($data['rewardlife']) && !isset($errors['rewardmaxlives'])
+            && isset($data['rewardmaxlives'], $data['startlives']) && (int) $data['rewardmaxlives'] < (int) $data['startlives']
+        ) {
+            $errors['rewardmaxlives'] = get_string('errormaxlives', 'quizgame');
         }
 
         return $errors;

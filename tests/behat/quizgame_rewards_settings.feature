@@ -113,3 +113,54 @@ Feature: Teachers can set the rewards for good play of a quizgame
     And "#id_rewardcombo" "css_element" should not be visible
     And "#id_rewardmaxmult" "css_element" should not be visible
     And "#id_rewardpraiselines" "css_element" should not be visible
+
+  @javascript
+  Scenario: The difficulty settings, bonus ship options and miss-break option have their defaults and are saved
+    Given I log in as "teacher1"
+    And I add a quizgame activity to course "Course 1" section "1"
+    And I expand all fieldsets
+    Then the following fields match these values:
+      | Starting lives            | 3                                |
+      | Speed-up per question (%) | 5                                |
+      | Speed-up starts           | Once the score target is reached |
+      | Speed-up per round (%)    | 30                               |
+      | Bonus ships per round     | 2                                |
+      | Bonus ship speed (%)      | 100                              |
+      | A miss resets the combo   | 0                                |
+    And "#id_speedrampstart" "css_element" should be visible
+    And I set the field "Speed-up per question (%)" to "0"
+    And "#id_speedrampstart" "css_element" should not be visible
+    And I set the following fields to these values:
+      | Quizventure name          | Harder quizventure    |
+      | Question category         | Test questions        |
+      | Starting lives            | 4                     |
+      | Speed-up per question (%) | 8                     |
+      | Speed-up starts           | After the first round |
+      | Speed-up per round (%)    | 0                     |
+      | Bonus ships per round     | 5                     |
+      | Bonus ship speed (%)      | 150                   |
+      | A miss resets the combo   | 1                     |
+    And I press "Save and return to course"
+    And I am on the "Harder quizventure" "quizgame activity editing" page
+    And I expand all fieldsets
+    And the following fields match these values:
+      | Starting lives            | 4                     |
+      | Speed-up per question (%) | 8                     |
+      | Speed-up starts           | After the first round |
+      | Speed-up per round (%)    | 0                     |
+      | Bonus ships per round     | 5                     |
+      | Bonus ship speed (%)      | 150                   |
+      | A miss resets the combo   | 1                     |
+
+  @javascript
+  Scenario: The maximum lives cannot be lower than the starting lives
+    Given I log in as "teacher1"
+    And I add a quizgame activity to course "Course 1" section "1"
+    And I expand all fieldsets
+    And I set the following fields to these values:
+      | Quizventure name  | Short-lived quizventure |
+      | Question category | Test questions          |
+      | Starting lives    | 6                       |
+      | Maximum lives     | 5                       |
+    And I press "Save and return to course"
+    Then I should see "The maximum lives cannot be lower than the starting lives."

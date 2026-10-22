@@ -68,7 +68,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     var inFullscreen = false;
 
     // Sassy enhancements. The server decides every effect; the client only plays what it is told.
-    var config = {reportmisses: false, sassy: false};
+    var config = {reportmisses: false, sassy: false, startlives: 3, speedramp: 0, speedrampstart: 0, speedroundjump: 30,
+        speedtarget: 0, bonusspeed: 100, decoylabels: []};
+    var speedRampOn = false;
     var messageQueue = [];
     var afterMessages = [];
     var readingUntil = 0;
@@ -598,6 +600,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         level = -1;
         levelNumber = 0;
         enemySpeed = 0.5;
+        speedRampOn = false;
         touchDown = false;
         mouseDown = false;
         selectedMatch = null;
@@ -654,6 +657,24 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     }
 
     /**
+     * Whether the per-question speed-up should start with the level now beginning.
+     *
+     * Speed only makes the game harder, so the browser decides it from the activity's settings.
+     * @return {boolean}
+     */
+    function speedRampDue() {
+        var afterFirstRound = levelNumber > questions.length;
+        if (config.speedrampstart === 2) {
+            return levelNumber >= 2;
+        }
+        if (config.speedrampstart === 0 && config.speedtarget > 0) {
+            return score >= config.speedtarget;
+        }
+        // After the first round, also when the activity has no score target to wait for.
+        return afterFirstRound;
+    }
+
+    /**
      * Helper function process next level (question).
      *
      * The question is shown at once; the server opens the level (levelstart) and its ships spawn when
@@ -667,7 +688,14 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         level++;
         if (level >= questions.length) {
             level = 0;
-            enemySpeed *= 1.3;
+            enemySpeed *= 1 + config.speedroundjump / 100;
+        }
+        if (!speedRampOn && config.speedramp > 0 && speedRampDue()) {
+            // Once started, the speed-up runs to the end of the game, even if the score drops again.
+            speedRampOn = true;
+        }
+        if (speedRampOn) {
+            enemySpeed *= 1 + config.speedramp / 100;
         }
         var q = questions[level];
         currentTeam = [];
@@ -817,7 +845,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             bonusRound.ships = bonusRound.tokens.map(function(ship, index) {
                 var count = bonusRound.tokens.length;
                 var x = bounds.width * (index + 1) / (count + 1) - 16;
-                var bonusShip = new BonusEnemy(x, -40 - index * 30, String(ship.text || ''), ship.token, index > 0);
+                var bonusShip = new BonusEnemy(x, -40 - index * 30, String(ship.text || ''), ship.token, index);
                 gameObjects.push(bonusShip);
                 return bonusShip;
             });
@@ -1278,7 +1306,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         GameObject.call(this, src, x, y);
         this.mouse = {x: 0, y: 0};
         this.movespeed = {x: 6, y: 4};
-        this.lives = 3;
+        this.lives = config.startlives;
         this.lastScore = 0;
     }
 
@@ -1742,17 +1770,29 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {int} y
      * @param {string} text the label, e.g. +1000
      * @param {string} token the bonus token the server issued
-     * @param {boolean} tinted whether to draw it in the second colour
+     * @param {int} colour index into BONUS_COLOURS (0 is the ship's own gold), so every ship looks different
      */
-    function BonusEnemy(x, y, text, token, tinted) {
+    function BonusEnemy(x, y, text, token, colour) {
         Enemy.call(this, "pix/bonusship.png", x, y, text, token);
-        this.tinted = !!tinted;
+        this.colour = BONUS_COLOURS[colour % BONUS_COLOURS.length];
         this.tintCanvas = null;
-        this.speed = 0.7 + Math.random() * 0.2;
+        this.speed = (0.7 + Math.random() * 0.2) * config.bonusspeed / 100;
         this.swayPhase = Math.random() * Math.PI * 2;
     }
 
     BonusEnemy.prototype = Object.create(Enemy.prototype);
+
+    /**
+     * Bonus ship colours: the tint over the sprite (null: none), the label and the explosion colour.
+     */
+    var BONUS_COLOURS = [
+        {tint: null, label: '#FFDD33', burst: '#FFDD33'},
+        {tint: 'rgba(255, 60, 220, 0.55)', label: '#FF99EE', burst: '#FF66DD'},
+        {tint: 'rgba(60, 220, 255, 0.55)', label: '#99EEFF', burst: '#66DDFF'},
+        {tint: 'rgba(90, 255, 120, 0.55)', label: '#AAFFBB', burst: '#77FF99'},
+        {tint: 'rgba(255, 140, 40, 0.6)', label: '#FFBB77', burst: '#FF9944'},
+        {tint: 'rgba(150, 90, 255, 0.6)', label: '#CCAAFF', burst: '#AA88FF'}
+    ];
 
     BonusEnemy.prototype.update = function(bounds) {
         // Slower than the answer ships, with a gentle sway; quicker only while entering and leaving.
@@ -1779,11 +1819,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     };
 
     /**
-     * The image to draw: the ship itself, or a copy tinted in the second colour.
+     * The image to draw: the ship itself, or a copy tinted in its colour.
      * @return {object} an image or a canvas
      */
     BonusEnemy.prototype.sprite = function() {
-        if (!this.tinted) {
+        if (this.colour.tint === null) {
             return this.image;
         }
         if (this.tintCanvas === null && this.image.complete && this.image.naturalWidth > 0) {
@@ -1793,7 +1833,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             var tint = canvas.getContext('2d');
             tint.drawImage(this.image, 0, 0);
             tint.globalCompositeOperation = 'source-atop';
-            tint.fillStyle = 'rgba(255, 60, 220, 0.55)';
+            tint.fillStyle = this.colour.tint;
             tint.fillRect(0, 0, canvas.width, canvas.height);
             this.tintCanvas = canvas;
         }
@@ -1802,7 +1842,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
 
     BonusEnemy.prototype.draw = function(context) {
         context.drawImage(this.sprite(), this.x, this.y, this.image.width, this.image.height);
-        context.fillStyle = this.tinted ? '#FF99EE' : '#FFDD33';
+        context.fillStyle = this.colour.label;
         context.font = "15px Audiowide";
         context.textAlign = 'center';
         wrapText(context, this.text, true, 17, displayRect.width * 0.2, this.x + this.image.width / 2, this.y - 5);
@@ -1813,7 +1853,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      */
     BonusEnemy.prototype.die = function() {
         GameObject.prototype.die.call(this);
-        spray(this.x + this.image.width / 2, this.y + this.image.height / 2, 200, this.tinted ? "#FF66DD" : "#FFDD33");
+        spray(this.x + this.image.width / 2, this.y + this.image.height / 2, 200, this.colour.burst);
         playSound("bonus");
     };
 
@@ -2476,10 +2516,26 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         stage = document.getElementById("mod_quizgame_game");
         questions = JSON.parse(stage.dataset.questions || '[]');
         var options = JSON.parse(stage.dataset.config || '{}') || {};
+        /**
+         * A whole-number option, or its default when missing.
+         * @param {string} name
+         * @param {int} fallback
+         * @return {int}
+         */
+        var number = function(name, fallback) {
+            var value = parseInt(options[name], 10);
+            return isNaN(value) ? fallback : value;
+        };
         config = {
             reportmisses: !!options.reportmisses,
             sassy: !!options.sassy,
-            decoylabels: Array.isArray(options.decoylabels) ? options.decoylabels : []
+            decoylabels: Array.isArray(options.decoylabels) ? options.decoylabels : [],
+            startlives: Math.max(1, number('startlives', 3)),
+            speedramp: Math.max(0, number('speedramp', 0)),
+            speedrampstart: number('speedrampstart', 0),
+            speedroundjump: Math.max(0, number('speedroundjump', 30)),
+            speedtarget: Math.max(0, number('speedtarget', 0)),
+            bonusspeed: Math.max(1, number('bonusspeed', 100))
         };
         document.addEventListener('visibilitychange', visibilityChange, false);
         context = stage.getContext("2d");

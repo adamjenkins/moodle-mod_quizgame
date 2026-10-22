@@ -44,12 +44,6 @@ class game_session {
     /** @var int Highest return fire aggression level. */
     const MAX_AGGRESSION = 5;
 
-    /** @var int Lives a game starts with. */
-    const START_LIVES = 3;
-
-    /** @var int Bonus ships issued by a bonus round. */
-    const BONUS_SHIPS = 2;
-
     /** @var int[] Priority of the praise kinds: one praise line per response, the highest wins. */
     const PRAISE_PRIORITY = ['combo' => 1, 'life' => 2, 'bonus' => 3, 'redemption' => 4];
 
@@ -61,6 +55,8 @@ class game_session {
         'pointscorrect' => self::POINTS,
         'wrongpenalties' => '300',
         'misspenalty' => 0,
+        'completionscore' => 0,
+        'gradepassingscore' => 0,
         'sassy' => 0,
         'sassywrongtrigger' => 3,
         'sassycleanneeded' => 1,
@@ -84,6 +80,13 @@ class game_session {
         'rewardbonusstreak' => 5,
         'rewardbonuspoints' => 1000,
         'rewardpraise' => 1,
+        'rewardmissbreak' => 0,
+        'rewardbonusships' => 2,
+        'startlives' => 3,
+        'rewardbonusspeed' => 100,
+        'speedramp' => 5,
+        'speedrampstart' => 0,
+        'speedroundjump' => 30,
     ];
 
     /** @var array Allowed [minimum, maximum] of the whole-number Sassy and rewards settings (as in the settings form). */
@@ -98,9 +101,15 @@ class game_session {
         'sassyswarmsize' => [5, 40],
         'rewardmaxmult' => [1, 10],
         'rewardlifestreak' => [1, 50],
-        'rewardmaxlives' => [3, 10],
+        'rewardmaxlives' => [1, 10],
         'rewardbonusstreak' => [1, 50],
         'rewardbonuspoints' => [1, 100000],
+        'rewardbonusships' => [1, 10],
+        'startlives' => [1, 10],
+        'rewardbonusspeed' => [25, 400],
+        'speedramp' => [0, 50],
+        'speedrampstart' => [0, 2],
+        'speedroundjump' => [0, 200],
     ];
 
     /** @var stdClass The quizgame record. */
@@ -173,6 +182,34 @@ class game_session {
     }
 
     /**
+     * The settings the game JavaScript needs (the canvas data-config attribute).
+     *
+     * Only gameplay that cannot change a score is left to the browser: lives it starts with, how the
+     * enemy ships speed up and how fast bonus ships fly. Misses are reported when they can cost points
+     * or break the combo.
+     *
+     * @return array
+     */
+    public function client_config(): array {
+        $target = (int) $this->setting('completionscore');
+        if ($target <= 0) {
+            $target = (int) $this->setting('gradepassingscore');
+        }
+        $missbreak = $this->reward_on('rewardcombo') && $this->setting('rewardmissbreak');
+        return [
+            'reportmisses' => (int) $this->setting('misspenalty') > 0 || $missbreak,
+            'sassy' => $this->sassy(),
+            'startlives' => $this->int_setting('startlives'),
+            'speedramp' => $this->int_setting('speedramp'),
+            'speedrampstart' => $this->int_setting('speedrampstart'),
+            'speedroundjump' => $this->int_setting('speedroundjump'),
+            // 0: no score target, so a ramp waiting for one starts after the first round instead.
+            'speedtarget' => max(0, $target),
+            'bonusspeed' => $this->int_setting('rewardbonusspeed'),
+        ];
+    }
+
+    /**
      * Points for a correct hit (fraction 1), which is also the per-second score cap.
      *
      * @return int
@@ -229,7 +266,7 @@ class game_session {
         if (!$this->reward_on('rewardcombo') || empty($this->data()['attempt'])) {
             return 1;
         }
-        $streak = (int) ($this->data()['attempt']['rewardstreak'] ?? 0);
+        $streak = (int) ($this->data()['attempt']['combostreak'] ?? 0);
         return max(1, min($this->int_setting('rewardmaxmult'), 1 + $streak));
     }
 
@@ -307,7 +344,8 @@ class game_session {
             'messages' => [],
             // Rewards for good play (independent of the Sassy counters).
             'rewardstreak' => 0,
-            'lives' => self::START_LIVES,
+            'combostreak' => 0,
+            'lives' => $this->int_setting('startlives'),
             'bonuspending' => false,
             'bonus' => [],
             'bonuspoints' => 0.0,
@@ -687,7 +725,8 @@ class game_session {
             return;
         }
         $text = '+' . $this->int_setting('rewardbonuspoints');
-        for ($i = 1; $i <= self::BONUS_SHIPS; $i++) {
+        $count = $this->int_setting('rewardbonusships');
+        for ($i = 1; $i <= $count; $i++) {
             $token = $this->hmac('b:' . $attempt['level'] . ':' . $i);
             $attempt['bonus'][$token] = true;
             $attempt['response']['bonusships'][] = ['text' => $text, 'token' => $token];
@@ -820,6 +859,9 @@ class game_session {
         }
         $points = 0.0 - max(0, (int) $this->setting('misspenalty'));
         $attempt['score'] += $points;
+        if ($this->reward_on('rewardcombo') && $this->setting('rewardmissbreak')) {
+            $this->break_combo();
+        }
         return ['result' => 'miss', 'points' => $points];
     }
 
@@ -1083,6 +1125,7 @@ class game_session {
         $attempt = &$this->attempt();
         $before = $this->multiplier();
         $attempt['rewardstreak']++;
+        $attempt['combostreak']++;
         $streak = (int) $attempt['rewardstreak'];
         if ($this->multiplier() > $before) {
             $attempt['response']['combo'] = 'up';
@@ -1103,11 +1146,23 @@ class game_session {
      * A wrong hit breaks the rewards clean streak (and the combo, if one was running).
      */
     protected function reward_wrong_hit(): void {
+        $this->break_combo();
         $attempt = &$this->attempt();
-        if ($attempt['rewardstreak'] > 0 && $this->multiplier() > 1) {
+        $attempt['rewardstreak'] = 0;
+    }
+
+    /**
+     * Set the combo multiplier back to x1, marking the break when a combo was running.
+     *
+     * A wrong hit also breaks the clean streak (reward_wrong_hit()); a miss, when the activity says so,
+     * breaks only the combo, so progress towards extra lives and bonus rounds is kept.
+     */
+    protected function break_combo(): void {
+        $attempt = &$this->attempt();
+        if ($attempt['combostreak'] > 0 && $this->multiplier() > 1) {
             $attempt['response']['combo'] = 'break';
         }
-        $attempt['rewardstreak'] = 0;
+        $attempt['combostreak'] = 0;
     }
 
     /**

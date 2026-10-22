@@ -5,6 +5,23 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102202] — Unreleased — Difficulty settings, more reward options
+
+### Added
+- **Difficulty** settings section: **Starting lives** (default 3), **Speed-up per
+  question** (default 5%, from the score target by default, or after the first round, or
+  from the second question; 0 = off) and **Speed-up per round** (default 30%, the
+  previous fixed speed-up; 0 = off).
+- Rewards: **Bonus ships per round** (default 2, each in its own colour), **Bonus ship
+  speed** (default 100%) and **A miss resets the combo** (default off; the clean streak
+  towards extra lives and bonus rounds is kept).
+- Backup and restore include the new settings.
+
+### Changed
+- **Maximum lives** can now be from 1 to 10, but not lower than the starting lives.
+
+---
+
 ## [2026102201] — Unreleased — Rewards for good play
 
 ### Added

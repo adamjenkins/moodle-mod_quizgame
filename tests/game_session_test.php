@@ -214,7 +214,8 @@ final class game_session_test extends \advanced_testcase {
     }
 
     /**
-     * Change the clean streak of the current game directly (no game flow can start a dodge round with a streak).
+     * Change the clean streak (and the combo count that follows it) of the current game directly (no game
+     * flow can start a dodge round with a streak).
      *
      * @param game_session $session
      * @param int $streak
@@ -224,6 +225,7 @@ final class game_session_test extends \advanced_testcase {
         foreach ($SESSION->mod_quizgame as $id => $data) {
             if (!empty($data['attempt'])) {
                 $SESSION->mod_quizgame[$id]['attempt']['rewardstreak'] = $streak;
+                $SESSION->mod_quizgame[$id]['attempt']['combostreak'] = $streak;
             }
         }
     }
@@ -1540,5 +1542,111 @@ final class game_session_test extends \advanced_testcase {
             $this->assertEquals([3], array_unique($seen['lives']));
         }
         $this->assertEquals(0.0, $session->finish()[2]);
+    }
+
+    /**
+     * The starting lives and the number of bonus ships come from the activity.
+     */
+    public function test_start_lives_and_bonus_ship_count(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings([
+            'startlives' => 2,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 1,
+            'rewardbonusships' => 4,
+        ]));
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $this->assertEquals(2, $session->answer($qid, 1, 'levelstart')['effects']['lives']);
+        $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
+        $ships = $session->answer($qid, 2, 'levelstart')['effects']['bonusships'];
+        $this->assertCount(4, $ships);
+        $this->assertCount(4, array_unique(array_column($ships, 'token')));
+        foreach ($ships as $ship) {
+            $this->assertEquals('bonus', $session->answer($qid, 2, 'shoot', $ship['token'])['result']);
+        }
+
+        // Out-of-range values saved while hidden are clamped to the form's range.
+        $session = $this->start_session($this->reward_settings(['startlives' => 0, 'rewardbonusships' => 50]));
+        $this->assertEquals(1, $session->answer($qid, 1, 'levelstart')['effects']['lives']);
+    }
+
+    /**
+     * With "a miss resets the combo", a miss breaks the multiplier but keeps the clean streak that earns
+     * extra lives and bonus rounds; without it a miss changes nothing.
+     */
+    public function test_miss_breaks_combo(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings([
+            'rewardcombo' => 1,
+            'rewardmissbreak' => 1,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 3,
+        ]));
+        $tokens = $this->answer_tokens($session, $qid);
+        $clean = function (int $level) use ($session, $qid, $tokens): array {
+            $session->answer($qid, $level, 'levelstart');
+            return $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
+        };
+
+        $this->assertEquals([2, 'up'], $this->pick($clean(1), 'multiplier', 'combo'));
+        $this->assertEquals([3, 'up'], $this->pick($clean(2), 'multiplier', 'combo'));
+        $session->answer($qid, 3, 'levelstart');
+        $result = $session->answer($qid, 3, 'miss');
+        $this->assertEquals(['miss', 0.0, 1, 'break'], $this->pick($result, 'result', 'points', 'multiplier', 'combo'));
+        // A second miss has no combo left to break.
+        $this->assertEquals([1, ''], $this->pick($session->answer($qid, 3, 'miss'), 'multiplier', 'combo'));
+        // The hit pays x1, and the level is still clean: the multiplier rises again and the streak of 3
+        // (kept through the miss) earns the bonus round.
+        $result = $session->answer($qid, 3, 'shoot', $tokens['1'][0]);
+        $this->assertEquals([1000.0, 2, 'up'], $this->pick($result, 'points', 'multiplier', 'combo'));
+        $this->assertCount(2, $session->answer($qid, 4, 'levelstart')['effects']['bonusships']);
+
+        // Without the option (the default) a miss keeps the combo.
+        $session = $this->start_session($this->reward_settings(['rewardcombo' => 1]));
+        $tokens = $this->answer_tokens($session, $qid);
+        $session->answer($qid, 1, 'levelstart');
+        $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
+        $session->answer($qid, 2, 'levelstart');
+        $this->assertEquals([2, ''], $this->pick($session->answer($qid, 2, 'miss'), 'multiplier', 'combo'));
+    }
+
+    /**
+     * The browser's settings: misses are reported when they cost points or break the combo, and the speed-up
+     * waits for the completion score, else the score for maximum grade.
+     */
+    public function test_client_config(): void {
+        $config = $this->start_session()->client_config();
+        $this->assertEquals([
+            'reportmisses' => false,
+            'sassy' => false,
+            'startlives' => 3,
+            'speedramp' => 5,
+            'speedrampstart' => 0,
+            'speedroundjump' => 30,
+            'speedtarget' => 0,
+            'bonusspeed' => 100,
+        ], $config);
+
+        $config = $this->start_session($this->reward_settings([
+            'rewardcombo' => 1,
+            'rewardmissbreak' => 1,
+            'gradepassingscore' => 8000,
+            'speedramp' => 10,
+            'speedrampstart' => 1,
+            'speedroundjump' => 0,
+            'rewardbonusspeed' => 250,
+            'startlives' => 5,
+        ]))->client_config();
+        $this->assertEquals(
+            [true, 8000, 10, 1, 0, 250, 5],
+            [$config['reportmisses'], $config['speedtarget'], $config['speedramp'], $config['speedrampstart'],
+                $config['speedroundjump'], $config['bonusspeed'], $config['startlives']]
+        );
+        // The miss-break option only matters while combos are on.
+        $config = $this->start_session($this->reward_settings(['rewardmissbreak' => 1]))->client_config();
+        $this->assertFalse($config['reportmisses']);
+        $config = $this->start_session(['completionscore' => 6000, 'gradepassingscore' => 8000])->client_config();
+        $this->assertEquals(6000, $config['speedtarget']);
     }
 }

@@ -46,6 +46,7 @@ Each question is worth the points for a correct hit (1000 by default) when answe
 $string['currentcategory'] = 'Current category (from a question bank you cannot use)';
 $string['emptyquiz'] = 'There are no multiple choice questions in the selected category.';
 $string['endofgame'] = 'Your score was: {$a}. Press space or click to restart.';
+$string['errormaxlives'] = 'The maximum lives cannot be lower than the starting lives.';
 $string['errorrange'] = 'Enter a whole number from {$a->min} to {$a->max}.';
 $string['errorwrongpenalties'] = 'Enter up to 20 whole numbers from 0 to 100000, separated by commas, for example 300,600,1000.';
 $string['eventgamescoreadded'] = 'Quizventure score recorded';
@@ -127,6 +128,10 @@ $string['rewardbonus'] = 'Enable bonus round';
 $string['rewardbonus_help'] = 'After a number of clean questions in a row (questions answered with no wrong hits), a bonus round starts before the next question: two bonus ships that never fire back, cannot hurt the player and cost nothing if they leave the screen. Shooting one earns the points per bonus ship.';
 $string['rewardbonuspoints'] = 'Points per bonus ship';
 $string['rewardbonuspoints_help'] = 'The points for shooting a bonus ship. They are never multiplied by the combo, and they are added on top of the points-per-second limit. Default 1000.';
+$string['rewardbonusships'] = 'Bonus ships per round';
+$string['rewardbonusships_help'] = 'How many bonus ships a bonus round has, each in its own colour. Default 2.';
+$string['rewardbonusspeed'] = 'Bonus ship speed (%)';
+$string['rewardbonusspeed_help'] = 'How fast the bonus ships fly, as a percentage of their normal speed: 50 is half as fast, 200 twice as fast. Default 100.';
 $string['rewardbonusstreak'] = 'Clean questions in a row for bonus round';
 $string['rewardbonusstreak_help'] = 'A bonus round starts after every this many clean questions in a row (5, 10, 15... with the default 5). A wrong hit starts the count again.';
 $string['rewardcombo'] = 'Enable combo multiplier';
@@ -136,11 +141,13 @@ $string['rewardlife_help'] = 'The player earns an extra life after a number of c
 $string['rewardlifestreak'] = 'Clean questions in a row per extra life';
 $string['rewardlifestreak_help'] = 'An extra life is earned after every this many clean questions in a row (5, 10, 15... with the default 5). A wrong hit starts the count again.';
 $string['rewardmaxlives'] = 'Maximum lives';
-$string['rewardmaxlives_help'] = 'No extra life is awarded while the player has this many lives. A game starts with 3 lives. Default 5.';
+$string['rewardmaxlives_help'] = 'No extra life is awarded while the player has this many lives. It cannot be lower than the starting lives (Difficulty section). Default 5.';
 $string['rewardmaxmult'] = 'Maximum multiplier';
 $string['rewardmaxmult_help'] = 'The highest combo multiplier. Default 4.
 
 The points-per-second limit grows by the same factor, so combos are not clipped. Note that combos can multiply a perfect game\'s score up to this many times: raise the game score for maximum grade (and any completion score) to match.';
+$string['rewardmissbreak'] = 'A miss resets the combo';
+$string['rewardmissbreak_help'] = 'When ticked, a shot that hits nothing sets the combo multiplier back to ×1. The clean streak towards extra lives and bonus rounds is kept. Off by default.';
 $string['rewardpraise'] = 'Enable praise messages';
 $string['rewardpraise_help'] = 'A short praise line appears, without pausing the game, when the combo rises, an extra life is earned, a bonus round starts or the player leaves cheater mode.';
 $string['rewardpraiselines'] = 'Praise messages';
@@ -260,6 +267,22 @@ $string['scoreslinkhelp'] = 'View all player attempts and scores';
 $string['scoringhdr'] = 'Scoring';
 $string['sound'] = 'Sound';
 $string['spacetostart'] = 'Press space or click to start';
+$string['speedhdr'] = 'Difficulty';
+$string['speedramp'] = 'Speed-up per question (%)';
+$string['speedramp_help'] = 'Once the speed-up has started, the enemy ships get this much faster with every new question, so the game keeps getting harder until it ends. 0 turns it off. Default 5.';
+$string['speedrampstart'] = 'Speed-up starts';
+$string['speedrampstart_firstround'] = 'After the first round';
+$string['speedrampstart_help'] = 'When the speed-up per question starts. Once started it continues for the rest of the game, even if the score drops again.
+
+* Once the score target is reached: the completion score if the activity has one, otherwise the game score for maximum grade. With neither, the speed-up starts after the first round.
+* After the first round: once every question has been played.
+* From the second question: every game gets harder from the start.';
+$string['speedrampstart_second'] = 'From the second question';
+$string['speedrampstart_target'] = 'Once the score target is reached';
+$string['speedroundjump'] = 'Speed-up per round (%)';
+$string['speedroundjump_help'] = 'Each time every question has been played and the questions start again, the enemy ships get this much faster. 0 turns it off. Default 30, as in earlier versions.';
+$string['startlives'] = 'Starting lives';
+$string['startlives_help'] = 'The number of lives a game starts with. Default 3.';
 $string['wrongpenalties'] = 'Wrong-hit penalty schedule';
 $string['wrongpenalties_help'] = 'Points lost for the 1st, 2nd, 3rd... wrong hit within one question, separated by commas; the last value repeats. For example, 300,600,1000 costs 300 for the first wrong hit, 600 for the second and 1000 for every one after that.
 
