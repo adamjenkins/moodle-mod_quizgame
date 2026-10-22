@@ -1905,6 +1905,19 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             this.y += 4;
             this.x += (target - this.x) * 0.1;
             if (this.y >= bounds.height * 0.12) {
+                // Hover for 3 to 5 seconds (25 frames a second) so the player seems to have a chance.
+                this.phase = 'hover';
+                this.clock = 0;
+                this.hoverFrames = 75 + Math.floor(Math.random() * 51);
+                this.hoverCentre = this.x;
+            }
+        } else if (this.phase === 'hover') {
+            // Weave across the screen, drifting towards the player without locking on.
+            this.hoverCentre += (target - this.hoverCentre) * 0.02;
+            var swing = bounds.width * 0.3 * Math.sin(this.clock / 12);
+            this.x += (Math.max(0, Math.min(bounds.width - this.width, this.hoverCentre + swing)) - this.x) * 0.2;
+            this.deflectShots();
+            if (this.clock >= this.hoverFrames) {
                 this.phase = 'charge';
                 this.clock = 0;
                 playSound("bosslaser");
@@ -1934,6 +1947,21 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 this.alive = false;
             }
         }
+    };
+
+    /**
+     * The player's shots spark off the hull and do no harm.
+     */
+    BossShip.prototype.deflectShots = function() {
+        var ship = this;
+        gameObjects.forEach(function(object) {
+            if (object instanceof Laser && object.friendly && object.alive &&
+                    object.x + object.image.width > ship.x && object.x < ship.x + ship.width &&
+                    object.y < ship.y + ship.height && object.y + object.image.height > ship.y) {
+                object.alive = false;
+                spray(object.x + object.image.width / 2, ship.y + ship.height, 6, "#FFFFFF");
+            }
+        });
     };
 
     BossShip.prototype.draw = function(context) {

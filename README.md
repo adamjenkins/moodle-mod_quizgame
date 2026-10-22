@@ -123,7 +123,8 @@ resets every game.
 - **Boss finale**: the offence numbered *Offences before the boss finale* (default 4)
   ends the game with a score of 0 after the boss lines ("This game is becoming more and
   more like life. And you know what? Life ain't fair."). *Boss finale style*:
-  - *Big boss*: a boss ship twice the normal size destroys the player's ship with a huge
+  - *Big boss*: a boss ship twice the normal size weaves above the player for 3 to 5
+    seconds (the player's shots spark off it), then destroys the player's ship with a huge
     laser beam.
   - *Swarm*: *Swarm size* (default 20) small ships pour in and attack non-stop until the
     player has lost every life.
