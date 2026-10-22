@@ -188,8 +188,8 @@ $string['sassy_help'] = 'Sassy enhancements detect guessing. After a number of w
 Each time cheater mode starts again is an offence. The first offence is always "Read it first" (the question is shown alone for a few seconds before the ships appear). Later offences apply the penalties enabled below, and the offence set as the boss finale limit ends the game with a score of 0.
 
 The server decides every penalty and keeps the score, so they cannot be skipped in the browser. Nothing about cheater mode is stored or reported to teachers; it resets every game.';
-$string['sassy_readfirst_default'] = 'Take your time. No, really, take it.
-Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!';
+$string['sassy_readfirst_default'] = 'Take your time. No, really, I\'ll wait!
+Read the question, then shoot only the ship with the correct answer. Ships appear in a moment.';
 $string['sassy_reading'] = 'Read the question...';
 $string['sassy_reversed_msg'] = 'Since you\'re not using your brain anyway, let\'s scramble your thumbs too.';
 $string['sassy_taunts_default'] = 'Are you ready? || I\'ll take that as a yes...

@@ -770,8 +770,8 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals('readfirst', $result['effects']['penalty']);
         $this->assertEquals(7, $result['effects']['readtime']);
         $this->assertSame([
-            'Take your time. No, really, take it.',
-            'Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!',
+            'Take your time. No, really, I\'ll wait!',
+            'Read the question, then shoot only the ship with the correct answer. Ships appear in a moment.',
         ], $result['effects']['messages']);
 
         // While reading, shots and misses are blocked: no points and no wrong hit (it would start the drain).
