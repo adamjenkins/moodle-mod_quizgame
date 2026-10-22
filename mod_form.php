@@ -292,7 +292,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
      */
     protected static function difficulty_int_fields(): array {
         return [
-            'startlives' => [3, 1, 10],
+            'startlives' => [3, 1, 200],
             'speedramp' => [5, 0, 50],
             'speedroundjump' => [30, 0, 200],
         ];

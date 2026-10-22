@@ -107,7 +107,7 @@ class game_session {
         'rewardbonusstreak' => [1, 50],
         'rewardbonuspoints' => [1, 100000],
         'rewardbonusships' => [1, 10],
-        'startlives' => [1, 10],
+        'startlives' => [1, 200],
         'rewardbonusspeed' => [25, 400],
         'speedramp' => [0, 50],
         'speedrampstart' => [0, 2],

@@ -1660,12 +1660,13 @@ final class game_session_test extends \advanced_testcase {
             'wrongpenalties' => '99999999999999999999,5',
             'sassybosslimit' => '1',
             'rewardmaxlives' => '250',
+            'startlives' => '250',
             'name' => 'Kept',
         ];
         game_session::clean_settings($data);
-        $this->assertEquals([100000, 0, '300', 2, 200, 'Kept'], [
+        $this->assertEquals([100000, 0, '300', 2, 200, 200, 'Kept'], [
             $data->pointscorrect, $data->misspenalty, $data->wrongpenalties, $data->sassybosslimit, $data->rewardmaxlives,
-            $data->name,
+            $data->startlives, $data->name,
         ]);
         $this->assertEquals('100,200', game_session::normalise_schedule(' 100, 200 '));
         $this->assertEquals('300', game_session::normalise_schedule(implode(',', array_fill(0, 21, '5'))));
