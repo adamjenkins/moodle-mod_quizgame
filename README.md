@@ -161,7 +161,8 @@ cheater mode builds the streak as usual, so redemption starts earning rewards.
   the next question is preceded by a bonus round ("Now THAT's how you play! Bonus
   round!"): *Bonus ships per round* (default 2) bonus ships in different colours, worth
   *Points per bonus ship* (default 1000) each and flying at *Bonus ship speed* (a
-  percentage of their normal speed, default 100), which never fire, cannot hurt the
+  percentage of the enemy ships' current speed, speed-ups included; default 100, as fast
+  as the enemy ships), which never fire, cannot hurt the
   player, never dodge and cost nothing if they leave. With the
   defaults the extra life and the bonus round arrive together; the life is shown first.
 - **Praise messages**: a short line shown without pausing the game when the combo rises,

@@ -13,7 +13,7 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
   from the second question; 0 = off) and **Speed-up per round** (default 30%, the
   previous fixed speed-up; 0 = off).
 - Rewards: **Bonus ships per round** (default 2, each in its own colour), **Bonus ship
-  speed** (default 100%) and **A miss resets the combo** (default off; the clean streak
+  speed** (a percentage of the enemy ships' current speed, default 100%) and **A miss resets the combo** (default off; the clean streak
   towards extra lives and bonus rounds is kept).
 - Backup and restore include the new settings.
 

@@ -1778,7 +1778,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         Enemy.call(this, "pix/bonusship.png", x, y, text, token);
         this.colour = BONUS_COLOURS[colour % BONUS_COLOURS.length];
         this.tintCanvas = null;
-        this.speed = (0.7 + Math.random() * 0.2) * config.bonusspeed / 100;
+        // The fall speed of an answer ship of this level (Enemy's yspeed under its velocity decay), scaled by
+        // the activity's bonus ship speed: 100% flies exactly as fast as the enemy ships, speed-ups included.
+        this.speed = this.yspeed / (1 - this.decay) * config.bonusspeed / 100;
         this.swayPhase = Math.random() * Math.PI * 2;
     }
 
@@ -1797,10 +1799,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     ];
 
     BonusEnemy.prototype.update = function(bounds) {
-        // Slower than the answer ships, with a gentle sway; quicker only while entering and leaving.
+        // Straight down with a gentle sway; like the answer ships, quicker while entering and leaving.
         var speed = this.speed;
         if (this.y < bounds.height / 10 || this.y > bounds.height * 9 / 10) {
-            speed *= 3;
+            speed *= 5;
         }
         this.y += speed;
         this.swayPhase += 0.03;
