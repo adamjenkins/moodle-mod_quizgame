@@ -43,7 +43,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         'pix/enemychoiceselected.png',
         'pix/laser.png',
         'pix/enemylaser.png',
-        'pix/bossship.png'
+        'pix/bossship.png',
+        'pix/bonusship.png'
     ];
     var imagesLoaded = 0;
     var loaded = false;
@@ -80,6 +81,29 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     var scoreTime = 0;
     var decoyLabels = [];
     var boss = newBossState();
+
+    // Rewards for good play. The server decides them too; the client only shows them.
+    var comboMultiplier = 1;
+    var comboFlash = {kind: '', until: 0};
+    var praiseLine = '';
+    var praiseUntil = 0;
+    var lifeEffects = [];
+    var bonusRound = newBonusState();
+
+    /**
+     * A fresh bonus round state: no bonus round running.
+     * @return {object}
+     */
+    function newBonusState() {
+        return {
+            active: false,
+            spawned: false,
+            startAt: 0,
+            ships: [],
+            tokens: [],
+            then: null
+        };
+    }
 
     /**
      * A fresh boss finale state: no finale running.
@@ -181,6 +205,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 decoyLabels.push(decoy.text);
             }
         });
+        applyRewards(effects);
         if (effects.boss === 'big' || effects.boss === 'swarm') {
             boss.style = effects.boss;
             boss.swarmsize = Math.max(1, effects.swarmsize || 20);
@@ -191,6 +216,58 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 }
             });
         }
+    }
+
+    /**
+     * Play the reward effects of a server answer: the combo, an extra life and a praise line.
+     *
+     * The bonus round's ships come with the levelstart response and are played by nextLevel().
+     * @param {object} effects the effects structure of the response
+     */
+    function applyRewards(effects) {
+        var now = Date.now();
+        var multiplier = Math.max(1, Math.floor(effects.multiplier || 1));
+        if (effects.combo === 'up' || effects.combo === 'break') {
+            comboFlash = {kind: effects.combo, until: now + 1000};
+        }
+        comboMultiplier = multiplier;
+        if (effects.lifegained) {
+            // The server's count is its record; the shown lives only ever move by one, so an in-flight
+            // lifelost report cannot make them jump.
+            player.lives += 1;
+            lifeEffects.push({
+                x: player.x + player.image.width / 2,
+                y: player.y,
+                start: now
+            });
+            playSound("extralife");
+        }
+        if (typeof effects.praise === 'string' && effects.praise !== '') {
+            praiseLine = effects.praise;
+            praiseUntil = now + 2000;
+        }
+    }
+
+    /**
+     * The time the last +1 LIFE effect on screen finishes, 0 if none.
+     * @return {number}
+     */
+    function lifeEffectsEnd() {
+        var end = 0;
+        lifeEffects.forEach(function(effect) {
+            end = Math.max(end, effect.start + 1500);
+        });
+        return end;
+    }
+
+    /**
+     * Tell the server the player lost a life (not during the boss finale: that game is already over).
+     */
+    function reportLifeLost() {
+        if (boss.style !== '') {
+            return;
+        }
+        answer({questionid: currentQuestionId, level: levelNumber, action: 'lifelost'});
     }
 
     $('#mod_quizgame_fullscreen_button').on('click', function() {
@@ -536,6 +613,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         drainRate = 0;
         scoreTime = Date.now();
         boss = newBossState();
+        comboMultiplier = 1;
+        comboFlash = {kind: '', until: 0};
+        praiseLine = '';
+        praiseUntil = 0;
+        lifeEffects = [];
+        bonusRound = newBonusState();
 
         // Every player needs a started game: the server checks the shots of guests too.
         serverCall('mod_quizgame_start_game', {quizgameid: quizgame}).catch(notification.exception);
@@ -614,6 +697,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             var effects = (response && response.effects) ? response.effects : {};
             var decoys = effects.decoys || [];
             var readtime = Math.max(0, effects.readtime || 0);
+            var bonusships = (effects.bonusships || []).filter(function(ship) {
+                return ship && typeof ship.token === 'string' && ship.token !== '';
+            });
             /**
              * Spawn the level's ships if the game is still on this level.
              */
@@ -623,15 +709,30 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                     levelReady = true;
                 }
             };
-            whenMessagesDone(function() {
+            /**
+             * Show the question again and spawn its ships, after any reading time.
+             */
+            var playQuestion = function() {
                 if (!stillCurrent()) {
                     return;
                 }
+                question = q.question;
                 if (readtime > 0) {
                     readingUntil = Date.now() + readtime * 1000;
                     pendingSpawn = spawn;
                 } else {
                     spawn();
+                }
+            };
+            whenMessagesDone(function() {
+                if (!stillCurrent()) {
+                    return;
+                }
+                // A bonus round plays before the question's ships and before any reading time.
+                if (bonusships.length) {
+                    startBonusRound(bonusships, playQuestion);
+                } else {
+                    playQuestion();
                 }
             });
             return response;
@@ -684,6 +785,69 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     }
 
     /**
+     * Start a bonus round: two harmless bonus ships, before the question's own ships.
+     *
+     * It starts once any +1 LIFE effect has played (the life first, then the bonus round), and ends
+     * when both ships are gone, shot or off screen; then the question goes on.
+     * @param {array} ships the bonus ships issued by the server, [{text, token}]
+     * @param {function} then called when the bonus round is over
+     */
+    function startBonusRound(ships, then) {
+        bonusRound = newBonusState();
+        bonusRound.active = true;
+        bonusRound.startAt = Math.max(Date.now(), lifeEffectsEnd());
+        bonusRound.tokens = ships.slice(0, 2);
+        bonusRound.then = then;
+        question = M.util.get_string('rewards_bonusround', 'mod_quizgame');
+    }
+
+    /**
+     * Run the bonus round one frame on: spawn its ships when due, and end it when they are gone.
+     * @param {object} bounds
+     */
+    function updateBonusRound(bounds) {
+        if (!bonusRound.active) {
+            return;
+        }
+        if (!bonusRound.spawned) {
+            if (Date.now() < bonusRound.startAt) {
+                return;
+            }
+            bonusRound.spawned = true;
+            bonusRound.ships = bonusRound.tokens.map(function(ship, index) {
+                var count = bonusRound.tokens.length;
+                var x = bounds.width * (index + 1) / (count + 1) - 16;
+                var bonusShip = new BonusEnemy(x, -40 - index * 30, String(ship.text || ''), ship.token, index > 0);
+                gameObjects.push(bonusShip);
+                return bonusShip;
+            });
+            return;
+        }
+        var busy = bonusRound.ships.some(function(ship) {
+            return ship.alive || ship.pending;
+        });
+        if (!busy) {
+            var then = bonusRound.then;
+            bonusRound = newBonusState();
+            if (then) {
+                then();
+            }
+        }
+    }
+
+    /**
+     * Remove a bonus round's ships and forget the round (the boss finale has started).
+     */
+    function cancelBonusRound() {
+        bonusRound.ships.forEach(function(ship) {
+            if (ship.alive) {
+                GameObject.prototype.die.call(ship);
+            }
+        });
+        bonusRound = newBonusState();
+    }
+
+    /**
      * Move on to the next level once the server says the current one is complete.
      */
     function advanceLevel() {
@@ -723,6 +887,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         boss.phase = 'play';
         boss.clock = 0;
         killAllAlive();
+        cancelBonusRound();
         readingUntil = 0;
         pendingSpawn = null;
         levelDodge = false;
@@ -811,12 +976,15 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             context.fillStyle = '#FFFFFF';
             context.font = "18px Audiowide";
             context.textAlign = 'left';
-            context.fillText(M.util.get_string('score', 'mod_quizgame',
+            var scoreText = M.util.get_string('score', 'mod_quizgame',
                                                {
                                                     "score": Math.round(displayScore()),
                                                     "lives": player.alive ? player.lives : 0
-                                               }),
-                                               5, displayRect.height - 20);
+                                               });
+            context.fillText(scoreText, 5, displayRect.height - 20);
+            if (boss.style === '') {
+                drawCombo(context, displayRect, 5 + context.measureText(scoreText).width + 20);
+            }
             context.textAlign = 'center';
 
             wrapText(context, question, false, 20, displayRect.width * 0.9, displayRect.width / 2, 20);
@@ -837,9 +1005,93 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         if (isReading() && player.alive) {
             drawReading(context, displayRect);
         }
+        if (player.alive && boss.style === '') {
+            drawLifeEffects(context);
+            drawPraise(context, displayRect);
+        }
         if (isPaused()) {
             drawPause(context, displayRect);
         }
+    }
+
+    /**
+     * Draw the combo multiplier beside the score; it flashes when it rises, and a broken combo fades out at ×1.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {number} x where the text starts
+     */
+    function drawCombo(context, displayRect, x) {
+        var now = Date.now();
+        var flashing = comboFlash.kind !== '' && now < comboFlash.until;
+        if (comboMultiplier <= 1 && !(flashing && comboFlash.kind === 'break')) {
+            return;
+        }
+        var left = flashing ? (comboFlash.until - now) / 1000 : 0;
+        var size = 18;
+        var colour = '#66FFFF';
+        context.save();
+        if (flashing && comboFlash.kind === 'break') {
+            colour = '#FF3333';
+            context.globalAlpha = Math.max(0, left);
+        } else if (flashing) {
+            // Rising: a pulse in size and colour that settles in about a second.
+            size = 18 + Math.round(10 * left);
+            if (Math.floor(left * 10) % 2 === 0) {
+                colour = '#FFCC00';
+            } else {
+                colour = '#FFFFFF';
+            }
+        }
+        context.fillStyle = colour;
+        context.font = size + "px Audiowide";
+        context.textAlign = 'left';
+        context.fillText(M.util.get_string('rewards_combo', 'mod_quizgame', comboMultiplier), x, displayRect.height - 20);
+        context.restore();
+    }
+
+    /**
+     * Draw the floating +1 LIFE effects, each rising and fading out over about 1.5 seconds.
+     * @param {object} context
+     */
+    function drawLifeEffects(context) {
+        var now = Date.now();
+        lifeEffects = lifeEffects.filter(function(effect) {
+            return now - effect.start < 1500;
+        });
+        lifeEffects.forEach(function(effect) {
+            var progress = (now - effect.start) / 1500;
+            context.save();
+            context.globalAlpha = Math.max(0, 1 - progress);
+            context.fillStyle = '#66FF66';
+            context.font = "22px Audiowide";
+            context.textAlign = 'center';
+            context.fillText(M.util.get_string('rewards_extralife', 'mod_quizgame'), effect.x, effect.y - 10 - progress * 50);
+            context.restore();
+        });
+    }
+
+    /**
+     * Draw the current praise line in the upper middle of the screen; it fades out in its last half second.
+     * @param {object} context
+     * @param {object} displayRect
+     */
+    function drawPraise(context, displayRect) {
+        var left = praiseUntil - Date.now();
+        if (praiseLine === '' || left <= 0) {
+            return;
+        }
+        if (isPaused()) {
+            // A pause message is on top (e.g. the bonus round's praise comes with Sassy messages): keep the line for after it.
+            praiseUntil = Math.max(praiseUntil, Date.now() + 2000);
+            return;
+        }
+        context.save();
+        context.globalAlpha = Math.min(1, left / 500);
+        context.fillStyle = '#66FF66';
+        context.font = "20px Audiowide";
+        context.textAlign = 'center';
+        wrapText(context, praiseLine, false, 24, displayRect.width * 0.85, displayRect.width / 2, displayRect.height * 0.3);
+        context.restore();
     }
 
     /**
@@ -907,6 +1159,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 spawn();
             }
         }
+        updateBonusRound(bounds);
         updateBoss(bounds);
         for (i = 0; i < 3; i++) {
             particles.push(new Star(bounds));
@@ -1086,6 +1339,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             return;
         }
         this.lastScore = displayScore();
+        // Reported before the score is recorded: the server keeps calls in order.
+        reportLifeLost();
         endGame();
     };
 
@@ -1095,6 +1350,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 this.die();
             } else {
                 this.lives--;
+                reportLifeLost();
                 spray(this.x + this.image.width / 2, this.y + this.image.height / 2, 100, "#FFCC00");
             }
         }
@@ -1437,7 +1693,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {object} bounds
      */
     function SwarmEnemy(bounds) {
-        var labels = decoyLabels.length ? decoyLabels : (config.decoylabels || []);
+        // Each ship picks from the full configured list; the labels seen on decoys are only a fallback.
+        var labels = config.decoylabels || [];
+        if (!labels.length) {
+            labels = decoyLabels;
+        }
         var text = labels.length ? labels[Math.floor(Math.random() * labels.length)] : '';
         Enemy.call(this, "pix/enemy.png", Math.random() * bounds.width, -40 - Math.random() * bounds.height / 3, text, '');
         this.speed = 3 + Math.random() * 3;
@@ -1473,6 +1733,109 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     SwarmEnemy.prototype.gotShot = function(shot) {
         shot.die();
         this.die(true);
+    };
+
+    /**
+     * A ship of a bonus round: harmless (it never fires, never rams the player and never dodges) and
+     * worth the points on its label. The server checks its token like any answer.
+     * @param {int} x
+     * @param {int} y
+     * @param {string} text the label, e.g. +1000
+     * @param {string} token the bonus token the server issued
+     * @param {boolean} tinted whether to draw it in the second colour
+     */
+    function BonusEnemy(x, y, text, token, tinted) {
+        Enemy.call(this, "pix/bonusship.png", x, y, text, token);
+        this.tinted = !!tinted;
+        this.tintCanvas = null;
+        this.speed = 0.7 + Math.random() * 0.2;
+        this.swayPhase = Math.random() * Math.PI * 2;
+    }
+
+    BonusEnemy.prototype = Object.create(Enemy.prototype);
+
+    BonusEnemy.prototype.update = function(bounds) {
+        // Slower than the answer ships, with a gentle sway; quicker only while entering and leaving.
+        var speed = this.speed;
+        if (this.y < bounds.height / 10 || this.y > bounds.height * 9 / 10) {
+            speed *= 3;
+        }
+        this.y += speed;
+        this.swayPhase += 0.03;
+        this.x += Math.sin(this.swayPhase) * 1.2;
+        if (this.x < bounds.x - this.image.width) {
+            this.x = bounds.width;
+        } else if (this.x > bounds.width) {
+            this.x = bounds.x - this.image.width;
+        }
+        if (this.y > bounds.height + this.image.height && this.alive) {
+            // Nothing is charged for a bonus ship that gets away.
+            this.alive = false;
+        }
+    };
+
+    BonusEnemy.prototype.isDodging = function() {
+        return false;
+    };
+
+    /**
+     * The image to draw: the ship itself, or a copy tinted in the second colour.
+     * @return {object} an image or a canvas
+     */
+    BonusEnemy.prototype.sprite = function() {
+        if (!this.tinted) {
+            return this.image;
+        }
+        if (this.tintCanvas === null && this.image.complete && this.image.naturalWidth > 0) {
+            var canvas = document.createElement('canvas');
+            canvas.width = this.image.naturalWidth;
+            canvas.height = this.image.naturalHeight;
+            var tint = canvas.getContext('2d');
+            tint.drawImage(this.image, 0, 0);
+            tint.globalCompositeOperation = 'source-atop';
+            tint.fillStyle = 'rgba(255, 60, 220, 0.55)';
+            tint.fillRect(0, 0, canvas.width, canvas.height);
+            this.tintCanvas = canvas;
+        }
+        return this.tintCanvas || this.image;
+    };
+
+    BonusEnemy.prototype.draw = function(context) {
+        context.drawImage(this.sprite(), this.x, this.y, this.image.width, this.image.height);
+        context.fillStyle = this.tinted ? '#FF99EE' : '#FFDD33';
+        context.font = "15px Audiowide";
+        context.textAlign = 'center';
+        wrapText(context, this.text, true, 17, displayRect.width * 0.2, this.x + this.image.width / 2, this.y - 5);
+    };
+
+    /**
+     * Destroy the ship: a golden burst and the bonus sound.
+     */
+    BonusEnemy.prototype.die = function() {
+        GameObject.prototype.die.call(this);
+        spray(this.x + this.image.width / 2, this.y + this.image.height / 2, 200, this.tinted ? "#FF66DD" : "#FFDD33");
+        playSound("bonus");
+    };
+
+    BonusEnemy.prototype.gotShot = function(shot) {
+        shot.die();
+        if (this.pending || !player.alive) {
+            return;
+        }
+        var ship = this;
+        ship.pending = true;
+        // A single shot even in a match question: no token2.
+        answer({questionid: ship.questionid, level: ship.levelnum, action: 'shoot', token: ship.token})
+        .then(function(response) {
+            ship.pending = false;
+            if (!ship.current(response)) {
+                return;
+            }
+            if (response.result === 'bonus' && ship.alive) {
+                ship.die();
+            }
+            return;
+        }).catch(notification.exception);
     };
 
     /**
@@ -1705,6 +2068,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 object2.gotShot(object1);
                 return true;
             }
+        }
+        if (object1 instanceof Player && object2 instanceof BonusEnemy) {
+            // Bonus ships are harmless: flying into one does nothing.
+            return false;
         }
         if (object1 instanceof Player && object2 instanceof SwarmEnemy) {
             if (objectsIntersect(object1, object2)) {

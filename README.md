@@ -57,11 +57,15 @@ within one question, whose last value repeats (e.g. `300,600,1000`).
 
 | Event | Points |
 |---|---|
-| Shooting a correct answer | +*P* × the answer's grade (fraction) |
+| Shooting a correct answer | +*P* × the answer's grade (fraction) × the combo multiplier *m* |
 | Shooting a wrong or partial answer (the shot bounces back) | −*S*[n] × (1 − 2 × fraction) for the n-th wrong hit in the question, if that is negative (e.g. −300 for a wrong answer); otherwise 0 |
-| Matching a stem with its answer | +*P* ÷ the number of stems (a wrong pair scores 0) |
+| Matching a stem with its answer | +*P* ÷ the number of stems × *m* (a wrong pair scores 0) |
 | A correct answer (or unmatched pair) leaving the screen | minus what it was worth |
 | A shot that hits nothing | −**Miss penalty** (default 0) |
+| Shooting a bonus ship (bonus round, see *Rewards*) | +**Points per bonus ship** (default 1000), never multiplied |
+
+*m* is 1 unless the combo multiplier of *Rewards* is on (see below); penalties are never
+multiplied.
 
 The defaults reproduce the scoring of earlier versions, under which guessing pays: with
 four answers, shooting at random still averages a profit. A schedule such as
@@ -71,7 +75,9 @@ them, which only spares itself the penalty.
 
 Each question can be played once per round; after every question has been played the
 round starts again, faster. A recorded score never exceeds *P* points per second that
-levels were open, so even a player who knows every answer earns points at a human pace. When a recording player dies, the server stores the score it
+levels were open (*P* × the **Maximum multiplier** when the combo multiplier is on; bonus
+ship points come on top), so even a player who knows every answer earns points at a human
+pace. When a recording player dies, the server stores the score it
 computed. If the page is closed mid-game, that game is recorded when the player starts
 the next one.
 
@@ -122,6 +128,40 @@ per line; `Line one || Line two` is a two-step prompt, and an empty list uses th
 built-in defaults. The "Read it first" and reversed-controls lines are language strings
 (`sassy_readfirst_msg`, `sassy_readfirst_help`, `sassy_reversed_msg`), changeable through
 language customisation.
+
+Rewards
+=======
+
+Rewards for players who read the question and shoot the right answer (**Rewards** in the
+activity settings; on by default for new activities, **off for activities created before
+this version**, so their scores and grade targets do not change until a teacher turns them
+on). Each reward has its own switch. Like Sassy, every rule is applied by the server; the
+state lives in the player's session and resets every game. Rewards work with or without
+Sassy enhancements.
+
+All rewards follow the **clean streak**: the number of questions in a row answered with
+no wrong hits. A wrong hit (a wrong answer, a decoy, a wrong pair) resets it to 0; misses
+and questions whose ships simply escaped neither extend nor break it. A clean question in
+cheater mode builds the streak as usual, so redemption starts earning rewards.
+
+- **Combo multiplier**: points for correct hits and matched pairs are multiplied by
+  1 + the clean streak (×1, ×2 after one clean question, ×3 after two...), up to
+  *Maximum multiplier* (default 4). The HUD shows "COMBO ×3" and flashes when it rises
+  or breaks. Penalties, score drain, missed-at-close points and bonus ships are never
+  multiplied. Combos can multiply a perfect game's score up to the maximum, so raise the
+  *Game score for maximum grade* and any completion score to match.
+- **Extra life**: one more life every *Clean questions in a row per extra life* (default
+  5), while the player has fewer than *Maximum lives* (default 5; a game starts with 3).
+- **Bonus round**: after every *Clean questions in a row for bonus round* (default 5),
+  the next question is preceded by a bonus round ("Now THAT's how you play! Bonus
+  round!"): two bonus ships worth *Points per bonus ship* (default 1000) each, which never
+  fire, cannot hurt the player, never dodge and cost nothing if they leave. With the
+  defaults the extra life and the bonus round arrive together; the life is shown first.
+- **Praise messages**: a short line shown without pausing the game when the combo rises,
+  a life is earned, a bonus round starts or the player leaves cheater mode. The
+  *Praise messages* list (one per line, empty for the built-in ones) is used for the combo
+  and the extra life; the bonus-round and redemption lines are language strings
+  (`rewards_bonus_msg`, `rewards_redemption_msg`).
 
 Grading
 =======

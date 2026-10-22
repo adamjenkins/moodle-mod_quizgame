@@ -123,6 +123,47 @@ $string['quizgame:viewallscores'] = 'View player scores';
 $string['quizgamename'] = 'Quizventure name';
 $string['quizgamename_help'] = 'What is the name of this Quizventure?';
 $string['removescores'] = 'Remove all user scores';
+$string['rewardbonus'] = 'Enable bonus round';
+$string['rewardbonus_help'] = 'After a number of clean questions in a row (questions answered with no wrong hits), a bonus round starts before the next question: two bonus ships that never fire back, cannot hurt the player and cost nothing if they leave the screen. Shooting one earns the points per bonus ship.';
+$string['rewardbonuspoints'] = 'Points per bonus ship';
+$string['rewardbonuspoints_help'] = 'The points for shooting a bonus ship. They are never multiplied by the combo, and they are added on top of the points-per-second limit. Default 1000.';
+$string['rewardbonusstreak'] = 'Clean questions in a row for bonus round';
+$string['rewardbonusstreak_help'] = 'A bonus round starts after every this many clean questions in a row (5, 10, 15... with the default 5). A wrong hit starts the count again.';
+$string['rewardcombo'] = 'Enable combo multiplier';
+$string['rewardcombo_help'] = 'The points for correct hits and matched pairs are multiplied by the combo: ×1 for the first question, ×2 after one clean question in a row, ×3 after two, and so on, up to the maximum multiplier. Any wrong hit resets it to ×1; misses do not. Penalties, score drain and bonus ships are never multiplied.';
+$string['rewardlife'] = 'Enable extra life';
+$string['rewardlife_help'] = 'The player earns an extra life after a number of clean questions in a row, up to the maximum number of lives.';
+$string['rewardlifestreak'] = 'Clean questions in a row per extra life';
+$string['rewardlifestreak_help'] = 'An extra life is earned after every this many clean questions in a row (5, 10, 15... with the default 5). A wrong hit starts the count again.';
+$string['rewardmaxlives'] = 'Maximum lives';
+$string['rewardmaxlives_help'] = 'No extra life is awarded while the player has this many lives. A game starts with 3 lives. Default 5.';
+$string['rewardmaxmult'] = 'Maximum multiplier';
+$string['rewardmaxmult_help'] = 'The highest combo multiplier. Default 4.
+
+The points-per-second limit grows by the same factor, so combos are not clipped. Note that combos can multiply a perfect game\'s score up to this many times: raise the game score for maximum grade (and any completion score) to match.';
+$string['rewardpraise'] = 'Enable praise messages';
+$string['rewardpraise_help'] = 'A short praise line appears, without pausing the game, when the combo rises, an extra life is earned, a bonus round starts or the player leaves cheater mode.';
+$string['rewardpraiselines'] = 'Praise messages';
+$string['rewardpraiselines_help'] = 'Messages shown when the combo rises or an extra life is earned, one per line; one is chosen at random. Leave empty to use the built-in messages.
+
+The bonus-round and leaving-cheater-mode lines are fixed language strings (rewards_bonus_msg, rewards_redemption_msg), which can be changed with language customisation.';
+$string['rewards'] = 'Rewards for good play';
+$string['rewards_bonus_msg'] = 'Now THAT\'s how you play! Bonus round!';
+$string['rewards_bonusround'] = 'BONUS ROUND';
+$string['rewards_combo'] = 'COMBO ×{$a}';
+$string['rewards_enable'] = 'Enable rewards';
+$string['rewards_extralife'] = '+1 LIFE';
+$string['rewards_help'] = 'Rewards for players who read the question and shoot the right answer, all driven by the clean streak: the number of questions in a row answered with no wrong hits. A wrong hit resets the streak; misses do not. Rewards work whether or not Sassy enhancements are on, and a clean question in cheater mode builds the streak too.
+
+Activities that existed before this setting was added have it switched off.';
+$string['rewards_praise_default'] = 'Look who actually read the question!
+Now THAT\'s how you play!
+Brains AND reflexes? Impressive.
+Combo! Keep it going!
+You\'re on fire!
+Reading pays off, doesn\'t it?';
+$string['rewards_redemption_msg'] = 'Redemption! Welcome back, pilot.';
+$string['rewardshdr'] = 'Rewards';
 $string['sassy'] = 'Sassy enhancements';
 $string['sassy_bosslines_default'] = 'This game is becoming more and more like life. And you know what? Life ain\'t fair.
 Are you ready? || Well, I\'ll take that as a yes.';

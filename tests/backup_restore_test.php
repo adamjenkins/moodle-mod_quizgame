@@ -101,6 +101,29 @@ final class backup_restore_test extends \advanced_testcase {
     }
 
     /**
+     * Create a quizgame with the given settings, back up and restore its course, and assert every setting survived.
+     *
+     * @param array $settings quizgame column => value to create the activity with
+     * @param string $label prefix for the assertion messages
+     */
+    protected function assert_settings_restore(array $settings, string $label = ''): void {
+        global $DB;
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
+        $category = $this->create_category($course);
+        $this->getDataGenerator()->create_module('quizgame', $settings + [
+            'course' => $course->id,
+            'questioncategory' => $category->id . ',' . $category->contextid,
+        ]);
+
+        $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
+
+        $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
+        foreach ($settings as $column => $value) {
+            $this->assertEquals($value, (string) $restored->$column, $label . $column);
+        }
+    }
+
+    /**
      * The category is remapped to the restored course's bank, settings survive, and links are decoded.
      */
     public function test_course_restore(): void {
@@ -108,7 +131,7 @@ final class backup_restore_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $course = $this->getDataGenerator()->create_course();
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
         $category = $this->create_category($course);
         $quizgame = $this->getDataGenerator()->create_module('quizgame', [
             'course' => $course->id,
@@ -150,9 +173,9 @@ final class backup_restore_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
 
-        $bankcourse = $this->getDataGenerator()->create_course();
+        $bankcourse = $this->getDataGenerator()->create_course(['summary' => '']);
         $category = $this->create_category($bankcourse);
-        $course = $this->getDataGenerator()->create_course();
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
         $quizgame = $this->getDataGenerator()->create_module('quizgame', [
             'course' => $course->id,
             'questioncategory' => $category->id . ',' . $category->contextid,
@@ -174,7 +197,6 @@ final class backup_restore_test extends \advanced_testcase {
      * Every scoring and Sassy setting survives a course backup and restore.
      */
     public function test_scoring_and_sassy_settings_restore(): void {
-        global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
 
@@ -198,18 +220,47 @@ final class backup_restore_test extends \advanced_testcase {
             'sassydecoylabels' => "Nope\nNah",
             'sassybosslines' => 'The end || Really',
         ];
-        $course = $this->getDataGenerator()->create_course(['summary' => '']);
-        $category = $this->create_category($course);
-        $this->getDataGenerator()->create_module('quizgame', $settings + [
-            'course' => $course->id,
-            'questioncategory' => $category->id . ',' . $category->contextid,
-        ]);
+        $this->assert_settings_restore($settings);
+    }
 
-        $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
+    /**
+     * Every rewards setting survives a course backup and restore, whether rewards are on or off.
+     */
+    public function test_rewards_settings_restore(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
 
-        $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
-        foreach ($settings as $column => $value) {
-            $this->assertEquals($value, $restored->$column, $column);
+        // Values other than the defaults, so a column lost on the way would come back changed.
+        $variants = [
+            [
+                'rewards' => 1,
+                'rewardcombo' => 0,
+                'rewardmaxmult' => 7,
+                'rewardlife' => 0,
+                'rewardlifestreak' => 3,
+                'rewardmaxlives' => 8,
+                'rewardbonus' => 0,
+                'rewardbonusstreak' => 9,
+                'rewardbonuspoints' => 2500,
+                'rewardpraise' => 0,
+                'rewardpraiselines' => "Great flying\nSuper",
+            ],
+            [
+                'rewards' => 0,
+                'rewardcombo' => 1,
+                'rewardmaxmult' => 2,
+                'rewardlife' => 1,
+                'rewardlifestreak' => 12,
+                'rewardmaxlives' => 3,
+                'rewardbonus' => 1,
+                'rewardbonusstreak' => 1,
+                'rewardbonuspoints' => 99999,
+                'rewardpraise' => 1,
+                'rewardpraiselines' => '',
+            ],
+        ];
+        foreach ($variants as $i => $settings) {
+            $this->assert_settings_restore($settings, 'variant ' . $i . ': ');
         }
     }
 }

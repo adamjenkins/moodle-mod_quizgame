@@ -197,6 +197,35 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026102200, 'quizgame');
     }
 
+    if ($oldversion < 2026102201) {
+        // Rewards for good play. New activities default to rewards on; existing ones are switched
+        // off below, so their scores and grade targets do not change until a teacher enables them.
+        $table = new xmldb_table('quizgame');
+        $fields = [
+            new xmldb_field('rewards', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'sassybosslines'),
+            new xmldb_field('rewardcombo', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'rewards'),
+            new xmldb_field('rewardmaxmult', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '4', 'rewardcombo'),
+            new xmldb_field('rewardlife', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'rewardmaxmult'),
+            new xmldb_field('rewardlifestreak', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '5', 'rewardlife'),
+            new xmldb_field('rewardmaxlives', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '5', 'rewardlifestreak'),
+            new xmldb_field('rewardbonus', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'rewardmaxlives'),
+            new xmldb_field('rewardbonusstreak', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '5', 'rewardbonus'),
+            new xmldb_field('rewardbonuspoints', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '1000', 'rewardbonusstreak'),
+            new xmldb_field('rewardpraise', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '1', 'rewardbonuspoints'),
+            new xmldb_field('rewardpraiselines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'rewardpraise'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        // A combo multiplier would make existing grade targets easier overnight: keep rewards off.
+        $DB->set_field('quizgame', 'rewards', 0);
+
+        upgrade_mod_savepoint(true, 2026102201, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }

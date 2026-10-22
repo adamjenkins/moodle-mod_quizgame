@@ -47,14 +47,16 @@ final class external_test extends \core_external\tests\externallib_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        $this->course = $this->getDataGenerator()->create_course();
+        $this->course = $this->getDataGenerator()->create_course(['summary' => '']);
         $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $this->course->id]);
         $generator = $this->getDataGenerator()->get_plugin_generator('core_question');
         $category = $generator->create_question_category(['contextid' => \context_module::instance($qbank->cmid)->id]);
         $this->question = $generator->create_question('truefalse', 'true', ['category' => $category->id]);
+        // Rewards off unless a test turns them on, so the scoring and Sassy tests see unmultiplied points.
         $this->quizgame = $this->getDataGenerator()->create_module('quizgame', [
             'course' => $this->course->id,
             'questioncategory' => (string) $category->id,
+            'rewards' => 0,
         ]);
         $this->student = $this->getDataGenerator()->create_and_enrol($this->course, 'student');
     }
@@ -251,6 +253,22 @@ final class external_test extends \core_external\tests\externallib_testcase {
     }
 
     /**
+     * The rewards effects of a response while rewards are off.
+     *
+     * @return array
+     */
+    protected function no_rewards(): array {
+        return [
+            'multiplier' => 1,
+            'combo' => '',
+            'lives' => 0,
+            'lifegained' => false,
+            'bonusships' => [],
+            'praise' => '',
+        ];
+    }
+
+    /**
      * With Sassy off every response carries empty effects, also for the levelstart action.
      */
     public function test_answer_effects_sassy_off(): void {
@@ -270,7 +288,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
-        ];
+        ] + $this->no_rewards();
         $result = $this->answer(1, 'levelstart');
         $this->assertEquals(
             ['started', 0.0, 0.0, false],
@@ -311,7 +329,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
-        ], $result['effects']);
+        ] + $this->no_rewards(), $result['effects']);
 
         // Starting level 2 closes level 1, whose correct answer was let go: -1000 more, -1300 in all.
         $result = $this->answer(2, 'levelstart');
@@ -331,7 +349,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
-        ], $result['effects']);
+        ] + $this->no_rewards(), $result['effects']);
 
         // Shooting during the reading time is blocked, and the one-off effects are gone.
         $result = $this->answer(2, 'shoot', $this->token(true));
@@ -376,7 +394,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => 'swarm',
             'swarmsize' => 25,
-        ], $result['effects']);
+        ] + $this->no_rewards(), $result['effects']);
 
         // Everything after the boss is done, and the recorded score is 0.
         $result = $this->answer(3, 'levelstart');
@@ -405,5 +423,107 @@ final class external_test extends \core_external\tests\externallib_testcase {
         // Under the old fixed cap of 1000 points per second this quick game would record 1000.
         $id = mod_quizgame_external::update_score($this->quizgame->id);
         $this->assertEquals(5000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+    }
+
+    /**
+     * Scores are capped per second at the points times the maximum multiplier, and bonus points are added outside the cap.
+     */
+    public function test_bounded_score_rewards(): void {
+        // Maximum-multiplier play (x4 of 1000 in the first second) is not clipped, as it would be by the plain cap.
+        $this->assertSame(4000, mod_quizgame_external::bounded_score(4000, 0.5, 4000));
+        $this->assertSame(1000, mod_quizgame_external::bounded_score(4000, 0.5));
+        // Bonus points are outside the cap: 4000 capped + 2000 bonus.
+        $this->assertSame(6000, mod_quizgame_external::bounded_score(6000, 0.5, 4000, 2000));
+        $this->assertSame(6000, mod_quizgame_external::bounded_score(9000, 0.5, 4000, 2000));
+        $this->assertSame(3500, mod_quizgame_external::bounded_score(3500, 0.5, 4000, 2000));
+        // A negative game with a bonus still records 0 at worst.
+        $this->assertSame(0, mod_quizgame_external::bounded_score(-500, 1, 1000, 1000));
+    }
+
+    /**
+     * A quick combo game is recorded in full under the raised cap.
+     */
+    public function test_combo_game_recorded_under_raised_cap(): void {
+        global $DB;
+        $this->set_settings(['rewards' => 1, 'rewardcombo' => 1, 'rewardmaxmult' => 10, 'rewardbonus' => 0]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        // A one-question game: 1000 x1, x2, x3.
+        $points = [];
+        for ($level = 1; $level <= 3; $level++) {
+            $points[] = $this->answer($level, 'shoot', $this->token(true))['points'];
+        }
+        $this->assertEquals([1000.0, 2000.0, 3000.0], $points);
+        // Within a second the plain cap would record 1000; the cap of 10 x 1000 per second keeps all 6000.
+        $id = mod_quizgame_external::update_score($this->quizgame->id);
+        $this->assertEquals(6000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+    }
+
+    /**
+     * The answer responses carry the reward effects: combo, extra life, praise, bonus round, lost lives,
+     * and the bonus points are recorded outside the cap.
+     */
+    public function test_answer_effects_rewards(): void {
+        global $DB;
+        $this->set_settings([
+            'rewards' => 1,
+            'rewardcombo' => 1,
+            'rewardmaxmult' => 4,
+            'rewardlife' => 1,
+            'rewardlifestreak' => 1,
+            'rewardmaxlives' => 5,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 1,
+            'rewardbonuspoints' => 1000,
+            'rewardpraise' => 1,
+            'rewardpraiselines' => 'Well flown',
+        ]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        $result = $this->answer(1, 'levelstart');
+        $this->assertEquals([
+            'multiplier' => 1,
+            'combo' => '',
+            'lives' => 3,
+            'lifegained' => false,
+            'bonusships' => [],
+            'praise' => '',
+        ], array_intersect_key($result['effects'], $this->no_rewards()));
+
+        // A clean question: the combo rises, a life is earned (its praise outranks the combo's).
+        $result = $this->answer(1, 'shoot', $this->token(true));
+        $this->assertEquals(['hit', 1000.0], [$result['result'], $result['points']]);
+        $this->assertEquals([
+            'multiplier' => 2,
+            'combo' => 'up',
+            'lives' => 4,
+            'lifegained' => true,
+            'bonusships' => [],
+            'praise' => 'Well flown',
+        ], array_intersect_key($result['effects'], $this->no_rewards()));
+
+        // The next levelstart starts the bonus round.
+        $result = $this->answer(2, 'levelstart');
+        $effects = $result['effects'];
+        $this->assertCount(2, $effects['bonusships']);
+        $this->assertEquals(['+1000', '+1000'], array_column($effects['bonusships'], 'text'));
+        $this->assertEquals(
+            [2, '', 4, false, get_string('rewards_bonus_msg', 'quizgame')],
+            [$effects['multiplier'], $effects['combo'], $effects['lives'], $effects['lifegained'], $effects['praise']]
+        );
+        $result = $this->answer(2, 'shoot', $effects['bonusships'][0]['token']);
+        $this->assertEquals(['bonus', 1000.0, 2000.0], [$result['result'], $result['points'], $result['score']]);
+
+        // A lost life counts down.
+        $result = $this->answer(2, 'lifelost');
+        $this->assertEquals(['done', 0.0, 3], [$result['result'], $result['points'], $result['effects']['lives']]);
+
+        // 1000 points within the first second are under the cap; the 1000 bonus points are added outside it.
+        $id = mod_quizgame_external::update_score($this->quizgame->id);
+        $this->assertEquals(2000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
     }
 }

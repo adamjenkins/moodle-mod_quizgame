@@ -28,8 +28,9 @@ use stdClass;
  * The browser only gets opaque answer tokens, never which answer is correct; every shot is
  * checked here and the score is kept in the user's session. The Sassy enhancements (cheater
  * mode, its penalties and the boss finale) are decided here too; the browser only plays the
- * effects it is sent. See dev-docs/forks/moodle-mod_quizgame/server-scoring-design.md and
- * sassy-contract.md in the workspace for the rules.
+ * effects it is sent. The rewards for good play (combo multiplier, extra lives, bonus round and
+ * praise) are decided here as well. See dev-docs/forks/moodle-mod_quizgame/server-scoring-design.md,
+ * sassy-contract.md and rewards-contract.md in the workspace for the rules.
  *
  * @package    mod_quizgame
  * @copyright  2016 John Okely <john@moodle.com>
@@ -42,6 +43,15 @@ class game_session {
 
     /** @var int Highest return fire aggression level. */
     const MAX_AGGRESSION = 5;
+
+    /** @var int Lives a game starts with. */
+    const START_LIVES = 3;
+
+    /** @var int Bonus ships issued by a bonus round. */
+    const BONUS_SHIPS = 2;
+
+    /** @var int[] Priority of the praise kinds: one praise line per response, the highest wins. */
+    const PRAISE_PRIORITY = ['combo' => 1, 'life' => 2, 'bonus' => 3, 'redemption' => 4];
 
     /** @var string[] Higher-tier penalties in severity order (the "In order" sequence). */
     const PENALTIES = ['decoys', 'reversed', 'dodge', 'returnfire', 'drain'];
@@ -63,9 +73,20 @@ class game_session {
         'sassydrainincrease' => 50,
         'sassybossstyle' => 0,
         'sassyswarmsize' => 20,
+        // Rewards stay off for a record without the columns.
+        'rewards' => 0,
+        'rewardcombo' => 1,
+        'rewardmaxmult' => 4,
+        'rewardlife' => 1,
+        'rewardlifestreak' => 5,
+        'rewardmaxlives' => 5,
+        'rewardbonus' => 1,
+        'rewardbonusstreak' => 5,
+        'rewardbonuspoints' => 1000,
+        'rewardpraise' => 1,
     ];
 
-    /** @var array Allowed [minimum, maximum] of the whole-number Sassy settings (as in the settings form). */
+    /** @var array Allowed [minimum, maximum] of the whole-number Sassy and rewards settings (as in the settings form). */
     const INT_RANGES = [
         'sassywrongtrigger' => [1, 20],
         'sassycleanneeded' => [1, 10],
@@ -75,6 +96,11 @@ class game_session {
         'sassydrainrate' => [1, 10000],
         'sassydrainincrease' => [0, 500],
         'sassyswarmsize' => [5, 40],
+        'rewardmaxmult' => [1, 10],
+        'rewardlifestreak' => [1, 50],
+        'rewardmaxlives' => [3, 10],
+        'rewardbonusstreak' => [1, 50],
+        'rewardbonuspoints' => [1, 100000],
     ];
 
     /** @var stdClass The quizgame record. */
@@ -134,9 +160,9 @@ class game_session {
     }
 
     /**
-     * A whole-number Sassy setting, kept within the range the settings form allows.
+     * A whole-number Sassy or rewards setting, kept within the range the settings form allows.
      *
-     * The form only checks these while Sassy is on, so a value saved while it was off may be out of range.
+     * The form only checks these while their feature is on, so a value saved while it was off may be out of range.
      *
      * @param string $name column name, a key of INT_RANGES
      * @return int
@@ -156,12 +182,55 @@ class game_session {
     }
 
     /**
+     * The per-second score cap: the points for a correct hit, times the maximum multiplier while combos are on.
+     *
+     * Legitimate combo play is not clipped by the cap; bonus points are exempt from it (passed separately).
+     *
+     * @return int
+     */
+    public function points_per_second(): int {
+        return $this->points_correct() * ($this->reward_on('rewardcombo') ? $this->int_setting('rewardmaxmult') : 1);
+    }
+
+    /**
      * Whether the Sassy enhancements are on for this activity.
      *
      * @return bool
      */
     protected function sassy(): bool {
         return !empty($this->setting('sassy'));
+    }
+
+    /**
+     * Whether the rewards for good play are on for this activity (off for a record without the column).
+     *
+     * @return bool
+     */
+    protected function rewards_on(): bool {
+        return !empty($this->setting('rewards'));
+    }
+
+    /**
+     * Whether one reward is on: the rewards master switch and the reward's own toggle.
+     *
+     * @param string $toggle rewardcombo, rewardlife, rewardbonus or rewardpraise
+     * @return bool
+     */
+    protected function reward_on(string $toggle): bool {
+        return $this->rewards_on() && !empty($this->setting($toggle));
+    }
+
+    /**
+     * The current combo multiplier: 1 + the clean streak, capped at the maximum (1 when combos are off).
+     *
+     * @return int
+     */
+    public function multiplier(): int {
+        if (!$this->reward_on('rewardcombo') || empty($this->data()['attempt'])) {
+            return 1;
+        }
+        $streak = (int) ($this->data()['attempt']['rewardstreak'] ?? 0);
+        return max(1, min($this->int_setting('rewardmaxmult'), 1 + $streak));
     }
 
     /**
@@ -236,6 +305,12 @@ class game_session {
             'over' => false,
             'boss' => '',
             'messages' => [],
+            // Rewards for good play (independent of the Sassy counters).
+            'rewardstreak' => 0,
+            'lives' => self::START_LIVES,
+            'bonuspending' => false,
+            'bonus' => [],
+            'bonuspoints' => 0.0,
             'response' => self::empty_response(),
         ];
     }
@@ -243,10 +318,20 @@ class game_session {
     /**
      * The effects that only the response which caused them carries.
      *
-     * @return array penalty started, reading time and decoys issued by this response
+     * @return array penalty started, reading time and decoys issued by this response; extra life, combo
+     *     change ('' | 'up' | 'break'), praise line (with its priority) and bonus ships of this response
      */
     protected static function empty_response(): array {
-        return ['penalty' => '', 'readtime' => 0, 'decoys' => []];
+        return [
+            'penalty' => '',
+            'readtime' => 0,
+            'decoys' => [],
+            'lifegained' => false,
+            'combo' => '',
+            'praise' => '',
+            'praiserank' => 0,
+            'bonusships' => [],
+        ];
     }
 
     /**
@@ -344,8 +429,9 @@ class game_session {
     /**
      * Finish the current game.
      *
-     * @return array [float $score, float $leveltime], or null if no game was started; leveltime is the
-     *     seconds levels were open, which bounds what an honest game can score
+     * @return array [float $score, float $leveltime, float $bonuspoints], or null if no game was started;
+     *     leveltime is the seconds levels were open, which bounds what an honest game can score, and
+     *     bonuspoints the part of the score paid by bonus ships, which the per-second cap exempts
      */
     public function finish(): ?array {
         $data = &$this->data();
@@ -358,8 +444,9 @@ class game_session {
         $this->settle_drain();
         if ($attempt['over']) {
             $attempt['score'] = 0.0;
+            $attempt['bonuspoints'] = 0.0;
         }
-        $result = [$attempt['score'], $attempt['leveltime']];
+        $result = [$attempt['score'], $attempt['leveltime'], (float) $attempt['bonuspoints']];
         $data['attempt'] = null;
         return $result;
     }
@@ -369,10 +456,10 @@ class game_session {
      *
      * @param int $questionid The question (level) the action is on
      * @param int $level The game's level counter (1 for the first level, +1 for each next level)
-     * @param string $action 'levelstart', 'shoot', 'miss' or 'levelend'
+     * @param string $action 'levelstart', 'shoot', 'miss', 'levelend' or 'lifelost'
      * @param string $token The ship shot
      * @param string $token2 For match questions, the selected ship of the other kind
-     * @return array result (started|hit|deflect|miss|blocked|dodge|done), points, score, levelcomplete, effects
+     * @return array result (started|hit|deflect|miss|blocked|dodge|bonus|done), points, score, levelcomplete, effects
      */
     public function answer(int $questionid, int $level, string $action, string $token = '', string $token2 = ''): array {
         $data = &$this->data();
@@ -391,6 +478,11 @@ class game_session {
         if ($attempt['over']) {
             // After the boss finale the game is lost: nothing scores any more.
             $attempt['score'] = 0.0;
+            $result = ['result' => 'done', 'points' => 0.0];
+        } else if ($action == 'lifelost') {
+            // The browser reports each life it loses. Lives belong to the game, so this never opens a level
+            // and is never refused for a level change.
+            $attempt['lives'] = max(0, (int) $attempt['lives'] - 1);
             $result = ['result' => 'done', 'points' => 0.0];
         } else if ($action == 'miss' && ($attempt['level'] !== $level || $attempt['current'] !== $questionid)) {
             // A miss never opens a level: one that crosses a level change is ignored.
@@ -436,12 +528,23 @@ class game_session {
      *
      * Keys: messages (string[]), penalty (key started by the last response, '' none, 'boss'),
      * cheater (bool), readtime (int seconds), decoys ([{text, token}]), dodge (bool), reversed (bool),
-     * aggression (int 0..5), drainrate (float points/s), boss ('' | 'big' | 'swarm'), swarmsize (int).
-     * All empty or zero when the Sassy enhancements are off.
+     * aggression (int 0..5), drainrate (float points/s), boss ('' | 'big' | 'swarm'), swarmsize (int):
+     * all empty or zero when the Sassy enhancements are off. Rewards: multiplier (int, 1 when combos are
+     * off), combo ('' | 'up' | 'break', changed by this response), lives (int), lifegained (bool),
+     * bonusships ([{text, token}], levelstart only), praise (string, '' none): zero or empty when off.
      *
      * @return array
      */
     public function effects(): array {
+        return $this->sassy_effects() + $this->reward_effects();
+    }
+
+    /**
+     * The Sassy enhancements part of effects().
+     *
+     * @return array
+     */
+    protected function sassy_effects(): array {
         $effects = [
             'messages' => [],
             'penalty' => '',
@@ -475,6 +578,36 @@ class game_session {
             'boss' => $boss,
             'swarmsize' => $boss === 'swarm' ? $this->int_setting('sassyswarmsize') : 0,
         ] + $effects;
+    }
+
+    /**
+     * The rewards part of effects().
+     *
+     * @return array
+     */
+    protected function reward_effects(): array {
+        $effects = [
+            'multiplier' => 1,
+            'combo' => '',
+            'lives' => 0,
+            'lifegained' => false,
+            'bonusships' => [],
+            'praise' => '',
+        ];
+        $data = $this->data();
+        if (empty($data['attempt']) || !$this->rewards_on()) {
+            return $effects;
+        }
+        $attempt = $data['attempt'] + $this->new_attempt();
+        $response = $attempt['response'] + self::empty_response();
+        return [
+            'multiplier' => $this->multiplier(),
+            'combo' => (string) $response['combo'],
+            'lives' => (int) $attempt['lives'],
+            'lifegained' => (bool) $response['lifegained'],
+            'bonusships' => array_values($response['bonusships']),
+            'praise' => (string) $response['praise'],
+        ];
     }
 
     /**
@@ -530,11 +663,36 @@ class game_session {
         $attempt['dodge'] = false;
         $attempt['reversed'] = false;
         $attempt['readuntil'] = 0.0;
-        if (!$this->sassy()) {
+        // Bonus ships of the previous level die with it.
+        $attempt['bonus'] = [];
+        if ($this->sassy()) {
+            $this->apply_pending();
+            $this->issue_decoys();
+        }
+        $this->issue_bonus();
+    }
+
+    /**
+     * Start the bonus round earned by the clean streak: two bonus ships before this level's question.
+     *
+     * Never after the boss finale (no level is opened then).
+     */
+    protected function issue_bonus(): void {
+        $attempt = &$this->attempt();
+        if (!$attempt['bonuspending']) {
             return;
         }
-        $this->apply_pending();
-        $this->issue_decoys();
+        $attempt['bonuspending'] = false;
+        if (!$this->reward_on('rewardbonus') || $attempt['over']) {
+            return;
+        }
+        $text = '+' . $this->int_setting('rewardbonuspoints');
+        for ($i = 1; $i <= self::BONUS_SHIPS; $i++) {
+            $token = $this->hmac('b:' . $attempt['level'] . ':' . $i);
+            $attempt['bonus'][$token] = true;
+            $attempt['response']['bonusships'][] = ['text' => $text, 'token' => $token];
+        }
+        $this->praise('bonus');
     }
 
     /**
@@ -675,6 +833,10 @@ class game_session {
      */
     protected function shoot(int $questionid, string $token, string $token2): array {
         $attempt = &$this->attempt();
+        if ($token !== '' && isset($attempt['bonus'][$token])) {
+            // A bonus ship, whatever the question type: never a wrong hit or a clean question, never multiplied.
+            return $this->shoot_bonus($token);
+        }
         if ($attempt['completed'] || $attempt['closed']) {
             return ['result' => 'done', 'points' => 0.0];
         }
@@ -704,6 +866,29 @@ class game_session {
             $this->clean_question();
         }
         return $result;
+    }
+
+    /**
+     * Shoot a bonus ship: its points are paid once and tracked apart, as the per-second cap exempts them.
+     *
+     * In a Read-it-first level the reading time restarts, as the browser only counts it down after the bonus round.
+     *
+     * @param string $token a token of the current level's bonus ships
+     * @return array result 'bonus' and points
+     */
+    protected function shoot_bonus(string $token): array {
+        $attempt = &$this->attempt();
+        unset($attempt['bonus'][$token]);
+        $points = (float) $this->int_setting('rewardbonuspoints');
+        $attempt['score'] += $points;
+        $attempt['bonuspoints'] += $points;
+        if ($attempt['readuntil'] > 0) {
+            // The browser starts a Read-it-first countdown only once the bonus round is over, which is after this
+            // shot: restart the reading time from now, so the bonus round does not eat it (nor count as level time).
+            $attempt['readuntil'] = max($attempt['readuntil'], $this->now() + $this->int_setting('sassyreadtime'));
+            $attempt['levelopened'] = max($attempt['levelopened'], $attempt['readuntil']);
+        }
+        return ['result' => 'bonus', 'points' => $points];
     }
 
     /**
@@ -782,7 +967,7 @@ class game_session {
             }
         }
         $attempt['completed'] = $complete;
-        return ['result' => 'hit', 'points' => $this->points_correct() * $fraction];
+        return ['result' => 'hit', 'points' => $this->points_correct() * $fraction * $this->multiplier()];
     }
 
     /**
@@ -830,15 +1015,16 @@ class game_session {
         // Remember which answer ship was used, so it cannot be paired again.
         $attempt['matched'][$stem->id] = $answer->id;
         $attempt['completed'] = count($attempt['matched']) >= count($stems);
-        return ['result' => 'hit', 'points' => $this->points_correct() / count($stems)];
+        return ['result' => 'hit', 'points' => $this->points_correct() / count($stems) * $this->multiplier()];
     }
 
     /**
-     * Count a wrong hit: the level's schedule position and, with Sassy on, the cheater streak.
+     * Count a wrong hit: the level's schedule position, the rewards clean streak and, with Sassy on, the cheater streak.
      */
     protected function wrong_hit(): void {
         $attempt = &$this->attempt();
         $attempt['levelwrong']++;
+        $this->reward_wrong_hit();
         if (!$this->sassy()) {
             return;
         }
@@ -869,21 +1055,91 @@ class game_session {
     }
 
     /**
-     * A level completed without a wrong hit: resets the streak and counts towards leaving cheater mode.
+     * A level completed without a wrong hit: resets the streak and counts towards leaving cheater mode,
+     * then builds the rewards clean streak.
      */
     protected function clean_question(): void {
-        if (!$this->sassy()) {
+        $attempt = &$this->attempt();
+        if ($this->sassy()) {
+            $attempt['wrongstreak'] = 0;
+            if ($attempt['cheater']) {
+                $attempt['cleanstreak']++;
+                if ($attempt['cleanstreak'] >= $this->int_setting('sassycleanneeded')) {
+                    $this->leave_cheater();
+                }
+            }
+        }
+        $this->reward_clean_question();
+    }
+
+    /**
+     * The rewards of a clean question: the clean streak grows, and may raise the combo, earn a life
+     * (up to the maximum) or a bonus round at the next level.
+     */
+    protected function reward_clean_question(): void {
+        if (!$this->rewards_on()) {
             return;
         }
         $attempt = &$this->attempt();
-        $attempt['wrongstreak'] = 0;
-        if (!$attempt['cheater']) {
+        $before = $this->multiplier();
+        $attempt['rewardstreak']++;
+        $streak = (int) $attempt['rewardstreak'];
+        if ($this->multiplier() > $before) {
+            $attempt['response']['combo'] = 'up';
+            $this->praise('combo');
+        }
+        $lifedue = $streak % $this->int_setting('rewardlifestreak') == 0;
+        if ($this->reward_on('rewardlife') && $lifedue && $attempt['lives'] < $this->int_setting('rewardmaxlives')) {
+            $attempt['lives']++;
+            $attempt['response']['lifegained'] = true;
+            $this->praise('life');
+        }
+        if ($this->reward_on('rewardbonus') && $streak % $this->int_setting('rewardbonusstreak') == 0) {
+            $attempt['bonuspending'] = true;
+        }
+    }
+
+    /**
+     * A wrong hit breaks the rewards clean streak (and the combo, if one was running).
+     */
+    protected function reward_wrong_hit(): void {
+        $attempt = &$this->attempt();
+        if ($attempt['rewardstreak'] > 0 && $this->multiplier() > 1) {
+            $attempt['response']['combo'] = 'break';
+        }
+        $attempt['rewardstreak'] = 0;
+    }
+
+    /**
+     * Set this response's praise line, unless a higher-priority one is already set.
+     *
+     * Redemption and bonus have their own lines; a combo rise or an extra life gets a random line of the
+     * teacher's list (the built-in list when it is empty).
+     *
+     * @param string $kind redemption, bonus, life or combo (a key of PRAISE_PRIORITY)
+     */
+    protected function praise(string $kind): void {
+        if (!$this->reward_on('rewardpraise')) {
             return;
         }
-        $attempt['cleanstreak']++;
-        if ($attempt['cleanstreak'] >= $this->int_setting('sassycleanneeded')) {
-            $this->leave_cheater();
+        $attempt = &$this->attempt();
+        $rank = self::PRAISE_PRIORITY[$kind];
+        if ((int) ($attempt['response']['praiserank'] ?? 0) >= $rank) {
+            return;
         }
+        if ($kind == 'redemption') {
+            $line = $this->format_line(get_string('rewards_redemption_msg', 'mod_quizgame'));
+        } else if ($kind == 'bonus') {
+            $line = $this->format_line(get_string('rewards_bonus_msg', 'mod_quizgame'));
+        } else {
+            $lines = $this->message_list('rewardpraiselines', 'rewards_praise_default', false);
+            $line = $lines ? $lines[random_int(0, count($lines) - 1)][0] : '';
+        }
+        if ($line === '') {
+            return;
+        }
+        $attempt['response']['praise'] = $line;
+        $attempt['response']['praiserank'] = $rank;
     }
 
     /**
@@ -898,6 +1154,7 @@ class game_session {
         $attempt['aggression'] = 0;
         $attempt['drainrate'] = 0.0;
         $attempt['pending'] = '';
+        $this->praise('redemption');
     }
 
     /**

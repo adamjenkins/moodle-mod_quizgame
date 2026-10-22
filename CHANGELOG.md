@@ -5,6 +5,27 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102201] — Unreleased — Rewards for good play
+
+### Added
+- **Rewards for good play**, driven by the clean streak (questions in a row answered
+  with no wrong hits): a combo multiplier for correct hits and matched pairs (×1 rising
+  to a maximum, default ×4, reset by any wrong hit), an extra life every 5 clean questions
+  up to a maximum of 5 lives, a bonus round of two harmless bonus ships worth 1000 points
+  each every 5 clean questions, and non-blocking praise messages (editable list). Each
+  reward and its numbers are configurable under the new **Rewards** settings section.
+  The server applies every rule; the points-per-second cap grows with the maximum
+  multiplier and bonus points are exempt from it.
+- New `lifelost` action, `bonus` result and reward fields in the `effects` structure of
+  the `mod_quizgame_answer` response.
+- Backup and restore include the new settings.
+
+### Changed
+- Rewards are on for new activities but switched **off** for existing ones on upgrade,
+  so their scores and grade targets do not change until a teacher enables them.
+
+---
+
 ## [2026102200] — Unreleased — Configurable scoring, Sassy enhancements
 
 ### Added

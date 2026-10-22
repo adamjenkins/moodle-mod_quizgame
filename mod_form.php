@@ -95,6 +95,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
 
         $this->add_scoring_elements();
         $this->add_sassy_elements();
+        $this->add_rewards_elements();
 
         // Add standard elements, common to all modules.
         $this->standard_coursemodule_elements();
@@ -176,6 +177,74 @@ class mod_quizgame_mod_form extends moodleform_mod {
         }
         // The swarm size only matters when a swarm can happen.
         $mform->hideIf('sassyswarmsize', 'sassybossstyle', 'eq', 0);
+    }
+
+    /**
+     * Add the Rewards section. Every field but the master toggle is hidden while it is off, and each
+     * reward's own settings are also hidden while that reward's toggle is off.
+     */
+    protected function add_rewards_elements(): void {
+        $mform = $this->_form;
+
+        $mform->addElement('header', 'rewardshdr', get_string('rewardshdr', 'quizgame'));
+
+        $mform->addElement('advcheckbox', 'rewards', get_string('rewards', 'quizgame'), get_string('rewards_enable', 'quizgame'));
+        $mform->setDefault('rewards', 1);
+        $mform->addHelpButton('rewards', 'rewards', 'quizgame');
+
+        $intfields = self::reward_int_fields();
+        foreach (self::reward_toggles() as $toggle => $fields) {
+            $mform->addElement('advcheckbox', $toggle, get_string($toggle, 'quizgame'));
+            $mform->setDefault($toggle, 1);
+            $mform->addHelpButton($toggle, $toggle, 'quizgame');
+            $mform->hideIf($toggle, 'rewards', 'notchecked');
+
+            foreach ($fields as $field) {
+                if ($field === 'rewardpraiselines') {
+                    $mform->addElement('textarea', $field, get_string($field, 'quizgame'), ['rows' => 6, 'cols' => 60]);
+                    $mform->setType($field, PARAM_TEXT);
+                    // New instances start with the built-in list, so teachers can see and edit it.
+                    $mform->setDefault($field, get_string('rewards_praise_default', 'quizgame'));
+                } else {
+                    $mform->addElement('text', $field, get_string($field, 'quizgame'), ['size' => '6']);
+                    $mform->setType($field, PARAM_INT);
+                    $mform->setDefault($field, $intfields[$field][0]);
+                }
+                $mform->addHelpButton($field, $field, 'quizgame');
+                $mform->hideIf($field, 'rewards', 'notchecked');
+                $mform->hideIf($field, $toggle, 'notchecked');
+            }
+        }
+    }
+
+    /**
+     * The reward toggles, in form order, with the settings that belong to each.
+     *
+     * @return array toggle name => list of field names
+     */
+    protected static function reward_toggles(): array {
+        return [
+            'rewardcombo' => ['rewardmaxmult'],
+            'rewardlife' => ['rewardlifestreak', 'rewardmaxlives'],
+            'rewardbonus' => ['rewardbonusstreak', 'rewardbonuspoints'],
+            'rewardpraise' => ['rewardpraiselines'],
+        ];
+    }
+
+    /**
+     * The whole-number reward settings with their default and allowed range.
+     *
+     * @return array field name => [default, minimum, maximum]
+     */
+    protected static function reward_int_fields(): array {
+        return [
+            'rewardmaxmult' => [4, 1, 10],
+            'rewardlifestreak' => [5, 1, 50],
+            // A game starts with 3 lives, so a lower maximum would never award one.
+            'rewardmaxlives' => [5, 3, 10],
+            'rewardbonusstreak' => [5, 1, 50],
+            'rewardbonuspoints' => [1000, 1, 100000],
+        ];
     }
 
     /**
@@ -349,6 +418,22 @@ class mod_quizgame_mod_form extends moodleform_mod {
         if (!empty($data['sassy'])) {
             foreach (self::sassy_int_fields() as $field => [, $min, $max]) {
                 self::validate_range($errors, $data, $field, $min, $max);
+            }
+        }
+
+        // Likewise each reward's fields are only checked when rewards and that reward are on.
+        if (!empty($data['rewards'])) {
+            $ranges = self::reward_int_fields();
+            foreach (self::reward_toggles() as $toggle => $fields) {
+                if (empty($data[$toggle])) {
+                    continue;
+                }
+                foreach ($fields as $field) {
+                    if (isset($ranges[$field])) {
+                        [, $min, $max] = $ranges[$field];
+                        self::validate_range($errors, $data, $field, $min, $max);
+                    }
+                }
             }
         }
 

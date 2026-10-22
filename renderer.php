@@ -52,6 +52,9 @@ class mod_quizgame_renderer extends plugin_renderer_base {
                 'sassy_gameover',
                 'sassy_continue',
                 'sassy_reading',
+                'rewards_combo',
+                'rewards_extralife',
+                'rewards_bonusround',
             ],
             'mod_quizgame'
         );
@@ -94,6 +97,8 @@ class mod_quizgame_renderer extends plugin_renderer_base {
             'deflect' => 'Deflect',
             'enemylaser' => 'EnemyLaser',
             'bosslaser' => 'BossLaser',
+            'bonus' => 'Bonus',
+            'extralife' => 'ExtraLife',
         ];
         foreach ($sounds as $id => $file) {
             $display .= '<audio id="mod_quizgame_sound_' . $id . '" preload="auto">' .

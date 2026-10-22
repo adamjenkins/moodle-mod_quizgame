@@ -48,7 +48,8 @@ class mod_quizgame_external extends external_api {
      * A level (one question) is worth at most the points for a correct hit and its answer ships start above the
      * screen, so honest levels last seconds. Idle time between games or on the start screen does
      * not count, so a script that knows the answers is held to a human pace. This is only the
-     * default of bounded_score(): games pass the activity's points for a correct hit instead.
+     * default of bounded_score(): games pass game_session::points_per_second() instead (the activity's
+     * points for a correct hit, times the maximum combo multiplier while combos are on).
      */
     const MAX_POINTS_PER_SECOND = 1000;
 
@@ -102,7 +103,10 @@ class mod_quizgame_external extends external_api {
 
         if ($canrecord) {
             if ($previous !== null && $previous[0] > 0) {
-                quizgame_add_highscore($quizgame, self::bounded_score($previous[0], $previous[1], $session->points_correct()));
+                quizgame_add_highscore(
+                    $quizgame,
+                    self::bounded_score($previous[0], $previous[1], $session->points_per_second(), $previous[2] ?? 0.0)
+                );
             }
             quizgame_log_game_start($quizgame);
         }
@@ -126,8 +130,8 @@ class mod_quizgame_external extends external_api {
             'quizgameid' => new external_value(PARAM_INT, 'quizgame instance ID'),
             'questionid' => new external_value(PARAM_INT, 'question (level) ID'),
             'level' => new external_value(PARAM_INT, 'level counter of the game: 1, 2, 3, ...'),
-            'action' => new external_value(PARAM_ALPHA, 'levelstart, shoot, miss or levelend'),
-            'token' => new external_value(PARAM_ALPHANUM, 'token of the ship shot', VALUE_DEFAULT, ''),
+            'action' => new external_value(PARAM_ALPHA, 'levelstart, shoot, miss, levelend or lifelost'),
+            'token' => new external_value(PARAM_ALPHANUM, 'token of the ship shot (a bonus ship too)', VALUE_DEFAULT, ''),
             'token2' => new external_value(
                 PARAM_ALPHANUM,
                 'match questions: token of the selected answer ship',
@@ -138,12 +142,12 @@ class mod_quizgame_external extends external_api {
     }
 
     /**
-     * Start a level, check a shot or a miss, or end a level, and update the server-side score.
+     * Start a level, check a shot or a miss, end a level or count a lost life, and update the server-side score.
      *
      * @param int $quizgameid quizgame id
      * @param int $questionid question id
      * @param int $level level counter of the game
-     * @param string $action levelstart, shoot, miss or levelend
+     * @param string $action levelstart, shoot, miss, levelend or lifelost
      * @param string $token token of the ship shot
      * @param string $token2 match questions: token of the selected answer ship
      * @return array result, points, score, levelcomplete and effects
@@ -157,8 +161,8 @@ class mod_quizgame_external extends external_api {
             'token' => $token,
             'token2' => $token2,
         ]);
-        if (!in_array($params['action'], ['shoot', 'levelend', 'levelstart', 'miss'])) {
-            throw new invalid_parameter_exception('action must be levelstart, shoot, miss or levelend');
+        if (!in_array($params['action'], ['shoot', 'levelend', 'levelstart', 'miss', 'lifelost'])) {
+            throw new invalid_parameter_exception('action must be levelstart, shoot, miss, levelend or lifelost');
         }
         [$quizgame, $context] = self::get_quizgame($params['quizgameid'], 'mod/quizgame:view');
 
@@ -178,7 +182,7 @@ class mod_quizgame_external extends external_api {
      */
     public static function answer_returns() {
         return new external_single_structure([
-            'result' => new external_value(PARAM_ALPHA, 'started, hit, deflect, miss, blocked, dodge or done'),
+            'result' => new external_value(PARAM_ALPHA, 'started, hit, deflect, miss, blocked, dodge, bonus or done'),
             'points' => new external_value(PARAM_FLOAT, 'points for this action'),
             'score' => new external_value(PARAM_FLOAT, 'game score so far'),
             'levelcomplete' => new external_value(PARAM_BOOL, 'whether the level is finished'),
@@ -187,7 +191,7 @@ class mod_quizgame_external extends external_api {
     }
 
     /**
-     * Description of the Sassy enhancements effects the game has to play (all empty or zero when off).
+     * Description of the Sassy enhancements and rewards effects the game has to play (empty or zero when off).
      *
      * Filled by \mod_quizgame\local\game_session::effects().
      *
@@ -215,6 +219,18 @@ class mod_quizgame_external extends external_api {
             'drainrate' => new external_value(PARAM_FLOAT, 'score drain in points per second, 0 for none'),
             'boss' => new external_value(PARAM_ALPHA, 'boss finale style: empty, big or swarm'),
             'swarmsize' => new external_value(PARAM_INT, 'number of swarm ships when boss is swarm, else 0'),
+            'multiplier' => new external_value(PARAM_INT, 'current combo multiplier, 1 when combos are off'),
+            'combo' => new external_value(PARAM_ALPHA, 'combo change by this response: empty, up or break'),
+            'lives' => new external_value(PARAM_INT, 'lives the server counts, 0 when rewards are off'),
+            'lifegained' => new external_value(PARAM_BOOL, 'whether this response earned an extra life'),
+            'bonusships' => new external_multiple_structure(
+                new external_single_structure([
+                    'text' => new external_value(PARAM_RAW, 'plain text label of the bonus ship'),
+                    'token' => new external_value(PARAM_ALPHANUM, 'token of the bonus ship'),
+                ]),
+                'levelstart: bonus ships to play before the question'
+            ),
+            'praise' => new external_value(PARAM_RAW, 'plain text praise line, drawn without pausing; empty for none'),
         ]);
     }
 
@@ -248,7 +264,10 @@ class mod_quizgame_external extends external_api {
         if ($finished === null) {
             throw new moodle_exception('nogamestarted', 'quizgame');
         }
-        return quizgame_add_highscore($quizgame, self::bounded_score($finished[0], $finished[1], $session->points_correct()));
+        return quizgame_add_highscore(
+            $quizgame,
+            self::bounded_score($finished[0], $finished[1], $session->points_per_second(), $finished[2] ?? 0.0)
+        );
     }
 
     /**
@@ -262,16 +281,20 @@ class mod_quizgame_external extends external_api {
     /**
      * Round a game score and keep it within 0 .. points per second x (seconds levels were open + 1).
      *
-     * @param float $score the server-computed score
+     * Bonus ship points are exempt from the cap: only the rest of the score is capped, then the bonus is added.
+     *
+     * @param float $score the server-computed score, bonus points included
      * @param float $leveltime seconds the game's levels were open (reading time excluded)
-     * @param int $pointspersecond the cap per second: the activity's points for a correct hit
+     * @param int $pointspersecond the cap per second: game_session::points_per_second()
+     * @param float $bonus the part of the score paid by bonus ships
      * @return int
      */
     public static function bounded_score(
         float $score,
         float $leveltime,
-        int $pointspersecond = self::MAX_POINTS_PER_SECOND
+        int $pointspersecond = self::MAX_POINTS_PER_SECOND,
+        float $bonus = 0.0
     ): int {
-        return (int) max(0, min(round($score), $pointspersecond * (floor($leveltime) + 1)));
+        return (int) max(0, min(round($score - $bonus), $pointspersecond * (floor($leveltime) + 1)) + round($bonus));
     }
 }

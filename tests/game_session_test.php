@@ -48,7 +48,7 @@ final class game_session_test extends \advanced_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        $this->course = $this->getDataGenerator()->create_course();
+        $this->course = $this->getDataGenerator()->create_course(['summary' => '']);
         $qbank = $this->getDataGenerator()->create_module('qbank', ['course' => $this->course->id]);
         $this->generator = $this->getDataGenerator()->get_plugin_generator('core_question');
         $this->category = $this->generator->create_question_category([
@@ -73,7 +73,10 @@ final class game_session_test extends \advanced_testcase {
     /**
      * Create the game for the category, prepare it as the page does, and start a game.
      *
-     * @param array $settings activity settings (scoring and Sassy columns) to override the defaults
+     * Rewards are off unless the settings turn them on (a new instance has them on), so the scoring and
+     * Sassy tests see unmultiplied points.
+     *
+     * @param array $settings activity settings (scoring, Sassy and rewards columns) to override the defaults
      * @param bool $clocked whether the session reads time from its public $clock property instead of the real clock
      * @return game_session
      */
@@ -81,6 +84,7 @@ final class game_session_test extends \advanced_testcase {
         $quizgame = $this->getDataGenerator()->create_module('quizgame', $settings + [
             'course' => $this->course->id,
             'questioncategory' => (string) $this->category->id,
+            'rewards' => 0,
         ]);
         $session = $clocked ? $this->clocked_session($quizgame) : new game_session($quizgame);
         $session->prepare(\context_module::instance($quizgame->cmid));
@@ -142,7 +146,86 @@ final class game_session_test extends \advanced_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'multiplier' => 1,
+            'combo' => '',
+            'lives' => 0,
+            'lifegained' => false,
+            'bonusships' => [],
+            'praise' => '',
         ];
+    }
+
+    /**
+     * Rewards settings: rewards on, with each reward off unless the settings turn it on.
+     *
+     * @param array $settings further settings
+     * @return array
+     */
+    protected function reward_settings(array $settings = []): array {
+        return $settings + [
+            'rewards' => 1,
+            'rewardcombo' => 0,
+            'rewardlife' => 0,
+            'rewardbonus' => 0,
+            'rewardpraise' => 0,
+        ];
+    }
+
+    /**
+     * The rewards part of a response's effects.
+     *
+     * @param array $result a response of game_session::answer()
+     * @return array multiplier, combo, lives, lifegained, bonusships and praise
+     */
+    protected function rewards_of(array $result): array {
+        $effects = $result['effects'];
+        return [
+            'multiplier' => $effects['multiplier'],
+            'combo' => $effects['combo'],
+            'lives' => $effects['lives'],
+            'lifegained' => $effects['lifegained'],
+            'bonusships' => $effects['bonusships'],
+            'praise' => $effects['praise'],
+        ];
+    }
+
+    /**
+     * Values of a response (or its effects), the response's own keys first, then its effects' keys.
+     *
+     * @param array $response a response of game_session::answer(), or its effects
+     * @param string ...$keys
+     * @return array the values in key order
+     */
+    protected function pick(array $response, string ...$keys): array {
+        $values = [];
+        foreach ($keys as $key) {
+            $values[] = array_key_exists($key, $response) ? $response[$key] : $response['effects'][$key];
+        }
+        return $values;
+    }
+
+    /**
+     * The built-in praise lines.
+     *
+     * @return string[]
+     */
+    protected function default_praise(): array {
+        return array_values(array_filter(array_map('trim', preg_split('/\R/u', get_string('rewards_praise_default', 'quizgame')))));
+    }
+
+    /**
+     * Change the clean streak of the current game directly (no game flow can start a dodge round with a streak).
+     *
+     * @param game_session $session
+     * @param int $streak
+     */
+    protected function set_streak(game_session $session, int $streak): void {
+        global $SESSION;
+        foreach ($SESSION->mod_quizgame as $id => $data) {
+            if (!empty($data['attempt'])) {
+                $SESSION->mod_quizgame[$id]['attempt']['rewardstreak'] = $streak;
+            }
+        }
     }
 
     /**
@@ -472,7 +555,7 @@ final class game_session_test extends \advanced_testcase {
         foreach (array_keys(game_session::DEFAULTS) as $column) {
             unset($quizgame->$column);
         }
-        unset($quizgame->sassytaunts, $quizgame->sassydecoylabels, $quizgame->sassybosslines);
+        unset($quizgame->sassytaunts, $quizgame->sassydecoylabels, $quizgame->sassybosslines, $quizgame->rewardpraiselines);
         $session = new game_session($quizgame);
         $session->prepare(\context_module::instance($quizgame->cmid));
         $session->start();
@@ -571,8 +654,8 @@ final class game_session_test extends \advanced_testcase {
             }
             $this->assertEquals('hit', $session->answer($qid, $level, 'shoot', $tokens['1'][0])['result']);
         }
-        // Five levels of 3 x -300 + 1000; the clock never moved.
-        $this->assertEquals([500.0, 0.0], $session->finish());
+        // Five levels of 3 x -300 + 1000; the clock never moved; no bonus points.
+        $this->assertEquals([500.0, 0.0, 0.0], $session->finish());
     }
 
     /**
@@ -997,5 +1080,465 @@ final class game_session_test extends \advanced_testcase {
         $result = $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
         $this->assertEquals(['hit', 1000.0], [$result['result'], $result['score']]);
         $this->assertSame($this->no_effects(), $result['effects']);
+    }
+
+    /**
+     * A new instance has every reward on with the documented defaults, and its cap allows the maximum multiplier.
+     */
+    public function test_new_instance_reward_defaults(): void {
+        global $DB;
+        $quizgame = $this->getDataGenerator()->create_module('quizgame', [
+            'course' => $this->course->id,
+            'questioncategory' => (string) $this->category->id,
+        ]);
+        $record = $DB->get_record('quizgame', ['id' => $quizgame->id], '*', MUST_EXIST);
+        $expected = [
+            'rewards' => 1,
+            'rewardcombo' => 1,
+            'rewardmaxmult' => 4,
+            'rewardlife' => 1,
+            'rewardlifestreak' => 5,
+            'rewardmaxlives' => 5,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 5,
+            'rewardbonuspoints' => 1000,
+            'rewardpraise' => 1,
+        ];
+        foreach ($expected as $column => $value) {
+            $this->assertEquals($value, $record->$column, $column);
+        }
+        $this->assertEquals(4000, (new game_session($record))->points_per_second());
+    }
+
+    /**
+     * The per-second cap is the points for a correct hit, times the maximum multiplier only while combos are on.
+     */
+    public function test_points_per_second(): void {
+        $this->question('truefalse', 'true');
+        $this->assertEquals(2000, $this->start_session(['pointscorrect' => 2000])->points_per_second());
+        $session = $this->start_session($this->reward_settings(['pointscorrect' => 2000, 'rewardmaxmult' => 3]));
+        $this->assertEquals(2000, $session->points_per_second());
+        $session = $this->start_session($this->reward_settings([
+            'pointscorrect' => 2000,
+            'rewardcombo' => 1,
+            'rewardmaxmult' => 3,
+        ]));
+        $this->assertEquals(6000, $session->points_per_second());
+        // Rewards off: the combo toggle alone does not raise the cap.
+        $session = $this->start_session(['pointscorrect' => 2000, 'rewardcombo' => 1, 'rewardmaxmult' => 3]);
+        $this->assertEquals(2000, $session->points_per_second());
+    }
+
+    /**
+     * The clean streak rises on clean questions and raises the multiplier up to the maximum; a miss and an
+     * unfinished level leave it alone; a wrong hit (deflect) breaks it. Only hits are multiplied: miss and
+     * wrong-hit penalties and the points of an answer let go are not.
+     */
+    public function test_combo_streak_and_multiplier(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings(['rewardcombo' => 1, 'rewardmaxmult' => 3, 'misspenalty' => 50]));
+        $tokens = $this->answer_tokens($session, $qid);
+        $right = fn($level) => $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
+
+        $result = $session->answer($qid, 1, 'levelstart');
+        $this->assertEquals([1, ''], $this->pick($result, 'multiplier', 'combo'));
+        // Each clean question raises the multiplier for the next hits, up to the maximum of 3.
+        $expected = [[1000.0, 1000.0, 2, 'up'], [2000.0, 3000.0, 3, 'up'], [3000.0, 6000.0, 3, '']];
+        foreach ($expected as $i => $values) {
+            $level = $i + 1;
+            $session->answer($qid, $level, 'levelstart');
+            $result = $right($level);
+            $this->assertEquals(
+                $values,
+                $this->pick($result, 'points', 'score', 'multiplier', 'combo'),
+                'level ' . $level
+            );
+        }
+
+        // A miss costs the plain miss penalty and keeps the streak.
+        $session->answer($qid, 4, 'levelstart');
+        $result = $session->answer($qid, 4, 'miss');
+        $this->assertEquals(
+            ['miss', -50.0, 5950.0, 3, ''],
+            $this->pick($result, 'result', 'points', 'score', 'multiplier', 'combo')
+        );
+        // A wrong hit costs the plain penalty and breaks the combo.
+        $result = $session->answer($qid, 4, 'shoot', $tokens['0'][0]);
+        $this->assertEquals(
+            ['deflect', -300.0, 5650.0, 1, 'break'],
+            $this->pick($result, 'result', 'points', 'score', 'multiplier', 'combo')
+        );
+        // The answer after a wrong hit scores x1 and the level is not clean: the streak stays at 0.
+        $result = $right(4);
+        $this->assertEquals([1000.0, 6650.0, 1, ''], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
+
+        $session->answer($qid, 5, 'levelstart');
+        $result = $right(5);
+        $this->assertEquals([1000.0, 7650.0, 2, 'up'], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
+        // Level 6 is let go: opening level 7 charges its answer unmultiplied (1000, not 2000) and keeps the streak.
+        $session->answer($qid, 6, 'levelstart');
+        $result = $session->answer($qid, 7, 'levelstart');
+        $this->assertEquals([6650.0, 2, ''], $this->pick($result, 'score', 'multiplier', 'combo'));
+        $this->assertEquals(2000.0, $right(7)['points']);
+    }
+
+    /**
+     * Multi-answer questions: each correct half is multiplied, and the level is clean once both are shot.
+     */
+    public function test_combo_multi_answer(): void {
+        $multi = $this->question('multichoice', 'two_of_four');
+        $session = $this->start_session($this->reward_settings(['rewardcombo' => 1]));
+        $tokens = $this->answer_tokens($session, $multi);
+
+        $this->assertEquals(500.0, $session->answer($multi, 1, 'shoot', $tokens['0.5'][0])['points']);
+        $this->assertEquals(1, $session->multiplier());
+        $result = $session->answer($multi, 1, 'shoot', $tokens['0.5'][1]);
+        $this->assertEquals([500.0, 2, 'up'], $this->pick($result, 'points', 'multiplier', 'combo'));
+        $this->assertEquals(1000.0, $session->answer($multi, 2, 'shoot', $tokens['0.5'][0])['points']);
+        // The half let go is charged unmultiplied: 1000 + 1000 - 500.
+        $this->assertEquals(1500.0, $session->answer($multi, 2, 'levelend')['score']);
+    }
+
+    /**
+     * Match: right pairs are multiplied, and a wrong pair is a wrong hit that breaks the combo.
+     */
+    public function test_combo_match(): void {
+        global $DB;
+        $qid = $this->question('match', 'foursubq');
+        $session = $this->start_session($this->reward_settings(['rewardcombo' => 1]));
+        $bytext = [];
+        foreach ($DB->get_records('qtype_match_subquestions', ['questionid' => $qid], 'id') as $sub) {
+            $bytext[trim(strip_tags($sub->questiontext))] = $sub;
+        }
+        $pair = fn($level, $stem, $answer) => $session->answer(
+            $qid,
+            $level,
+            'shoot',
+            $session->token('s', $bytext[$stem]->id),
+            $session->token('m', $bytext[$answer]->id)
+        );
+
+        foreach (['frog', 'cat', 'newt'] as $stem) {
+            $result = $pair(1, $stem, $stem);
+            $this->assertEqualsWithDelta(1000 / 3, $result['points'], 0.001);
+        }
+        $this->assertEquals([true, 2, 'up'], $this->pick($result, 'levelcomplete', 'multiplier', 'combo'));
+
+        $this->assertEqualsWithDelta(2000 / 3, $pair(2, 'frog', 'frog')['points'], 0.001);
+        // The cat with an amphibian (the newt's answer ship): a wrong pair, no points, the combo breaks.
+        $result = $pair(2, 'cat', 'newt');
+        $this->assertEquals(['miss', 0.0, 1, 'break'], $this->pick($result, 'result', 'points', 'multiplier', 'combo'));
+        $this->assertEqualsWithDelta(1000 / 3, $pair(2, 'cat', 'cat')['points'], 0.001);
+    }
+
+    /**
+     * In cheater mode a clean question builds the streak (decoys still come); shooting a decoy is a wrong hit
+     * that breaks it and costs the plain penalty.
+     */
+    public function test_streak_in_cheater_mode_and_decoy(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings($this->sassy_settings([
+            'sassypenalties' => 'decoys',
+            'sassycleanneeded' => 5,
+            'rewardcombo' => 1,
+        ])), true);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        // Offence 1 (Read it first, at level 2), then offence 2 (decoys) in level 2.
+        $session->answer($qid, 1, 'levelstart');
+        $session->answer($qid, 1, 'shoot', $tokens['0'][0]);
+        $session->answer($qid, 2, 'levelstart');
+        $session->clock += 100;
+        $this->assertEquals('decoys', $session->answer($qid, 2, 'shoot', $tokens['0'][0])['effects']['penalty']);
+        $session->answer($qid, 2, 'shoot', $tokens['1'][0]);
+
+        // Level 3 is clean while a cheater: the streak grows.
+        $this->assertCount(1, $session->answer($qid, 3, 'levelstart')['effects']['decoys']);
+        $result = $session->answer($qid, 3, 'shoot', $tokens['1'][0]);
+        $effects = $result['effects'];
+        $this->assertEquals([1000.0, true, 2, 'up'], $this->pick($result, 'points', 'cheater', 'multiplier', 'combo'));
+
+        $decoys = $session->answer($qid, 4, 'levelstart')['effects']['decoys'];
+        $result = $session->answer($qid, 4, 'shoot', $decoys[0]['token']);
+        $this->assertEquals(['deflect', -300.0, 1, 'break'], $this->pick($result, 'result', 'points', 'multiplier', 'combo'));
+    }
+
+    /**
+     * Leaving cheater mode with a clean question builds the streak and gives the redemption praise, which
+     * outranks the combo praise of the same response.
+     */
+    public function test_redemption_praise(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings($this->sassy_settings([
+            'sassypenalties' => 'returnfire',
+            'sassycleanneeded' => 1,
+            'rewardcombo' => 1,
+            'rewardpraise' => 1,
+        ])), true);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $session->answer($qid, 1, 'levelstart');
+        $this->assertTrue($session->answer($qid, 1, 'shoot', $tokens['0'][0])['effects']['cheater']);
+        $this->assertEquals('readfirst', $session->answer($qid, 2, 'levelstart')['effects']['penalty']);
+        $session->clock += 100;
+        $effects = $session->answer($qid, 2, 'shoot', $tokens['1'][0])['effects'];
+        $this->assertEquals(
+            [false, 2, 'up', get_string('rewards_redemption_msg', 'quizgame')],
+            $this->pick($effects, 'cheater', 'multiplier', 'combo', 'praise')
+        );
+        // The next combo rise gets a general praise line.
+        $session->answer($qid, 3, 'levelstart');
+        $praise = $session->answer($qid, 3, 'shoot', $tokens['1'][0])['effects']['praise'];
+        $this->assertContains($praise, $this->default_praise());
+    }
+
+    /**
+     * Shots and misses dodged in a dodge round are no wrong hits: the streak survives them.
+     */
+    public function test_dodge_rejection_keeps_streak(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings($this->sassy_settings([
+            'sassypenalties' => 'dodge',
+            'sassycleanneeded' => 5,
+            'rewardcombo' => 1,
+        ])), true);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        // Offence 1 (Read it first), then offence 2 (dodge, at level 3).
+        $session->answer($qid, 1, 'levelstart');
+        $session->answer($qid, 1, 'shoot', $tokens['0'][0]);
+        $session->answer($qid, 2, 'levelstart');
+        $session->clock += 100;
+        $session->answer($qid, 2, 'shoot', $tokens['0'][0]);
+        $this->assertTrue($session->answer($qid, 3, 'levelstart')['effects']['dodge']);
+        // The offence reset the streak; give it one as if earlier levels were clean.
+        $this->set_streak($session, 2);
+        foreach ([['shoot', $tokens['0'][0]], ['miss', ''], ['shoot', $tokens['1'][0]]] as [$action, $token]) {
+            $result = $session->answer($qid, 3, $action, $token);
+            $this->assertEquals(['dodge', 3, ''], $this->pick($result, 'result', 'multiplier', 'combo'));
+        }
+    }
+
+    /**
+     * An extra life every N clean questions, never above the maximum; each lost life reported by the browser
+     * counts down (not below 0, and never opening a level). A new game starts with 3 lives and no streak.
+     */
+    public function test_extra_lives(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings([
+            'rewardlife' => 1,
+            'rewardlifestreak' => 2,
+            'rewardmaxlives' => 4,
+            'rewardpraise' => 1,
+            'rewardpraiselines' => "Nice one\n\n",
+        ]));
+        $tokens = $this->answer_tokens($session, $qid);
+        $clean = function (int $level) use ($session, $qid, $tokens): array {
+            $session->answer($qid, $level, 'levelstart');
+            return $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
+        };
+
+        $this->assertEquals(3, $session->answer($qid, 1, 'levelstart')['effects']['lives']);
+        $result = $clean(1);
+        $this->assertEquals([1000.0, 3, false, ''], $this->pick($result, 'points', 'lives', 'lifegained', 'praise'));
+        $effects = $clean(2)['effects'];
+        // Combos are off: the multiplier stays 1 and no combo praise comes.
+        $this->assertEquals(
+            [4, true, 'Nice one', 1, ''],
+            $this->pick($effects, 'lives', 'lifegained', 'praise', 'multiplier', 'combo')
+        );
+        $this->assertFalse($clean(3)['effects']['lifegained']);
+        // At the maximum no life is awarded.
+        $effects = $clean(4)['effects'];
+        $this->assertEquals([4, false, ''], $this->pick($effects, 'lives', 'lifegained', 'praise'));
+
+        // A lost life counts down, scores nothing and does not open a level (level 99 here).
+        $result = $session->answer($qid, 99, 'lifelost');
+        $this->assertEquals(['done', 0.0, 4000.0, 3], $this->pick($result, 'result', 'points', 'score', 'lives'));
+        $this->assertFalse($clean(5)['effects']['lifegained']);
+        $effects = $clean(6)['effects'];
+        $this->assertEquals([4, true], $this->pick($effects, 'lives', 'lifegained'));
+        for ($i = 0; $i < 6; $i++) {
+            $lives = $session->answer($qid, 6, 'lifelost')['effects']['lives'];
+        }
+        $this->assertEquals(0, $lives);
+
+        // A new game starts afresh.
+        $session->start();
+        $result = $session->answer($qid, 1, 'levelstart');
+        $this->assertEquals([3, 1], $this->pick($result, 'lives', 'multiplier'));
+        $this->assertFalse($session->answer($qid, 1, 'shoot', $tokens['1'][0])['effects']['lifegained']);
+    }
+
+    /**
+     * The bonus round: after every N clean questions the next levelstart issues two bonus ships, each paying
+     * the bonus points once and unmultiplied. A bonus shot is no wrong hit and does not complete the level;
+     * unshot bonus ships cost nothing and their tokens die at the next levelstart.
+     */
+    public function test_bonus_round(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings([
+            'rewardcombo' => 1,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 2,
+            'rewardbonuspoints' => 750,
+            'rewardpraise' => 1,
+        ]));
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $this->assertEquals([], $session->answer($qid, 1, 'levelstart')['effects']['bonusships']);
+        $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
+        $this->assertEquals([], $session->answer($qid, 2, 'levelstart')['effects']['bonusships']);
+        $result = $session->answer($qid, 2, 'shoot', $tokens['1'][0]);
+        // The streak of 2 earns the bonus round, which waits for the next level.
+        $this->assertEquals([3000.0, []], $this->pick($result, 'score', 'bonusships'));
+
+        $result = $session->answer($qid, 3, 'levelstart');
+        $ships = $result['effects']['bonusships'];
+        $this->assertCount(2, $ships);
+        $this->assertEquals(['+750', '+750'], array_column($ships, 'text'));
+        foreach ($ships as $ship) {
+            $this->assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $ship['token']);
+        }
+        $this->assertNotEquals($ships[0]['token'], $ships[1]['token']);
+        $this->assertEquals(get_string('rewards_bonus_msg', 'quizgame'), $result['effects']['praise']);
+
+        // Paid once, unmultiplied (the multiplier is 3), and the streak and level are untouched.
+        $result = $session->answer($qid, 3, 'shoot', $ships[0]['token']);
+        $this->assertEquals(
+            ['bonus', 750.0, 3750.0, false, 3, ''],
+            $this->pick($result, 'result', 'points', 'score', 'levelcomplete', 'multiplier', 'combo')
+        );
+        $this->assertEquals([], $result['effects']['bonusships']);
+        $used = $ships[0]['token'];
+        $this->assert_refused('invalidgameanswer', fn() => $session->answer($qid, 3, 'shoot', $used));
+        // The question's hit after the bonus is still clean and multiplied.
+        $result = $session->answer($qid, 3, 'shoot', $tokens['1'][0]);
+        $this->assertEquals([3000.0, 6750.0, 4, 'up'], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
+
+        // The second bonus ship left unshot: nothing is charged, and its token dies with the level.
+        $result = $session->answer($qid, 4, 'levelstart');
+        $this->assertEquals([6750.0, []], $this->pick($result, 'score', 'bonusships'));
+        $unshot = $ships[1]['token'];
+        $this->assert_refused('invalidgameanswer', fn() => $session->answer($qid, 4, 'shoot', $unshot));
+        $session->answer($qid, 4, 'shoot', $tokens['1'][0]);
+        // Streak 4: the next bonus round.
+        $this->assertCount(2, $session->answer($qid, 5, 'levelstart')['effects']['bonusships']);
+
+        [$score, , $bonuspoints] = $session->finish();
+        $this->assertEquals([10750.0, 750.0], [$score, $bonuspoints]);
+    }
+
+    /**
+     * Bonus ships come for match questions too: shot alone (no second token), they pay and are no wrong pair.
+     */
+    public function test_bonus_round_match(): void {
+        global $DB;
+        $qid = $this->question('match', 'foursubq');
+        $session = $this->start_session($this->reward_settings(['rewardbonus' => 1, 'rewardbonusstreak' => 1]));
+        foreach ($DB->get_records('qtype_match_subquestions', ['questionid' => $qid], 'id') as $sub) {
+            if ((string) $sub->questiontext !== '') {
+                $session->answer($qid, 1, 'shoot', $session->token('s', $sub->id), $session->token('m', $sub->id));
+            }
+        }
+        $ships = $session->answer($qid, 2, 'levelstart')['effects']['bonusships'];
+        $this->assertCount(2, $ships);
+        $result = $session->answer($qid, 2, 'shoot', $ships[1]['token'], '');
+        $this->assertEquals(['bonus', 1000.0, false], $this->pick($result, 'result', 'points', 'levelcomplete'));
+        $this->assertEqualsWithDelta(2000.0, $result['score'], 0.001);
+    }
+
+    /**
+     * After the boss nothing pays, not even a bonus ship of the level, and the game's bonus points are void.
+     */
+    public function test_bonus_after_boss(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->reward_settings($this->sassy_settings([
+            'sassybosslimit' => 2,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 1,
+        ])), true);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $session->answer($qid, 1, 'levelstart');
+        $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
+        $ships = $session->answer($qid, 2, 'levelstart')['effects']['bonusships'];
+        $this->assertEquals('bonus', $session->answer($qid, 2, 'shoot', $ships[0]['token'])['result']);
+        // Two offences: the boss.
+        $session->answer($qid, 2, 'shoot', $tokens['0'][0]);
+        $this->assertEquals('boss', $session->answer($qid, 2, 'shoot', $tokens['0'][0])['effects']['penalty']);
+
+        $result = $session->answer($qid, 2, 'shoot', $ships[1]['token']);
+        $this->assertEquals(['done', 0.0, 0.0], $this->pick($result, 'result', 'points', 'score'));
+        $this->assertEquals([], $session->answer($qid, 3, 'levelstart')['effects']['bonusships']);
+        [$score, , $bonuspoints] = $session->finish();
+        $this->assertEquals([0.0, 0.0], [$score, $bonuspoints]);
+    }
+
+    /**
+     * Settings for test_disabled_reward: the reward switched off.
+     *
+     * @return array
+     */
+    public static function disabled_reward_provider(): array {
+        return [
+            'rewards off' => ['rewards'],
+            'combo off' => ['rewardcombo'],
+            'extra life off' => ['rewardlife'],
+            'bonus round off' => ['rewardbonus'],
+            'praise off' => ['rewardpraise'],
+        ];
+    }
+
+    /**
+     * A disabled reward (or rewards off) never fires, while the other rewards still do.
+     *
+     * @param string $off the setting switched off
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('disabled_reward_provider')]
+    public function test_disabled_reward(string $off): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session([
+            'rewards' => 1,
+            'rewardcombo' => 1,
+            'rewardlife' => 1,
+            'rewardlifestreak' => 1,
+            'rewardbonus' => 1,
+            'rewardbonusstreak' => 1,
+            'rewardpraise' => 1,
+            $off => 0,
+        ]);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $seen = ['multiplier' => [], 'combo' => [], 'lives' => [], 'lifegained' => [], 'bonusships' => [], 'praise' => []];
+        $points = [];
+        for ($level = 1; $level <= 4; $level++) {
+            $responses = [$session->answer($qid, $level, 'levelstart')];
+            $responses[] = $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
+            $points[] = $responses[1]['points'];
+            foreach ($responses as $response) {
+                foreach ($this->rewards_of($response) as $key => $value) {
+                    $seen[$key][] = $value;
+                }
+            }
+        }
+        $fired = [
+            'rewardcombo' => max($seen['multiplier']) > 1 || in_array('up', $seen['combo']),
+            'rewardlife' => in_array(true, $seen['lifegained'], true),
+            'rewardbonus' => count(array_filter($seen['bonusships'])) > 0,
+            'rewardpraise' => count(array_filter($seen['praise'])) > 0,
+        ];
+        foreach ($fired as $toggle => $didfire) {
+            $this->assertSame($off != 'rewards' && $off != $toggle, $didfire, $toggle);
+        }
+        if ($off == 'rewards' || $off == 'rewardcombo') {
+            $this->assertEquals([1000.0, 1000.0, 1000.0, 1000.0], $points);
+        }
+        if ($off == 'rewards') {
+            $this->assertEquals([0], array_unique($seen['lives']));
+        } else if ($off == 'rewardlife') {
+            $this->assertEquals([3], array_unique($seen['lives']));
+        }
+        $this->assertEquals(0.0, $session->finish()[2]);
     }
 }

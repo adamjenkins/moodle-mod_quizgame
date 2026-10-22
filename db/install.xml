@@ -36,6 +36,17 @@
         <FIELD NAME="sassytaunts" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Taunt messages, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassydecoylabels" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Decoy ship labels, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassybosslines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Boss finale lines, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="rewards" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether rewards for good play are enabled"/>
+        <FIELD NAME="rewardcombo" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether the combo multiplier is enabled"/>
+        <FIELD NAME="rewardmaxmult" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="4" SEQUENCE="false" COMMENT="Maximum combo multiplier"/>
+        <FIELD NAME="rewardlife" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether extra lives are enabled"/>
+        <FIELD NAME="rewardlifestreak" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Clean questions in a row per extra life"/>
+        <FIELD NAME="rewardmaxlives" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Maximum number of lives"/>
+        <FIELD NAME="rewardbonus" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether the bonus round is enabled"/>
+        <FIELD NAME="rewardbonusstreak" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="5" SEQUENCE="false" COMMENT="Clean questions in a row for a bonus round"/>
+        <FIELD NAME="rewardbonuspoints" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="1000" SEQUENCE="false" COMMENT="Points per bonus ship (not multiplied)"/>
+        <FIELD NAME="rewardpraise" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether praise messages are enabled"/>
+        <FIELD NAME="rewardpraiselines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Praise messages, one per line (empty: built-in defaults)"/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
