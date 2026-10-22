@@ -82,6 +82,9 @@ class restore_quizgame_activity_structure_step extends restore_activity_structur
             $data->questioncategory = '';
         }
 
+        // A backup is untrusted input: keep the scoring, Sassy and rewards settings within the form's rules.
+        \mod_quizgame\local\game_session::clean_settings($data);
+
         // Insert the quizgame record.
         $newitemid = $DB->insert_record('quizgame', $data);
         // Immediately after inserting "activity" record, call this.

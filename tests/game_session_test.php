@@ -1649,4 +1649,38 @@ final class game_session_test extends \advanced_testcase {
         $config = $this->start_session(['completionscore' => 6000, 'gradepassingscore' => 8000])->client_config();
         $this->assertEquals(6000, $config['speedtarget']);
     }
+
+    /**
+     * Scoring settings outside the form's rules (e.g. from a crafted backup) are cleaned, and clamped when read.
+     */
+    public function test_settings_clamped(): void {
+        $data = (object) [
+            'pointscorrect' => '9999999999',
+            'misspenalty' => '-5',
+            'wrongpenalties' => '99999999999999999999,5',
+            'sassybosslimit' => '1',
+            'name' => 'Kept',
+        ];
+        game_session::clean_settings($data);
+        $this->assertEquals([100000, 0, '300', 2, 'Kept'], [
+            $data->pointscorrect, $data->misspenalty, $data->wrongpenalties, $data->sassybosslimit, $data->name,
+        ]);
+        $this->assertEquals('100,200', game_session::normalise_schedule(' 100, 200 '));
+        $this->assertEquals('300', game_session::normalise_schedule(implode(',', array_fill(0, 21, '5'))));
+        $this->assertEquals('300', game_session::normalise_schedule('100,,200'));
+
+        // Read-time clamping protects records written before the restore cleaned them.
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session([
+            'pointscorrect' => 9999999999,
+            'misspenalty' => 9999999999,
+            'wrongpenalties' => 'x',
+        ]);
+        $tokens = $this->answer_tokens($session, $qid);
+        $this->assertEquals(100000, $session->points_correct());
+        $session->answer($qid, 1, 'levelstart');
+        $this->assertEquals(-100000.0, $session->answer($qid, 1, 'miss')['points']);
+        $this->assertEquals(-300.0, $session->answer($qid, 1, 'shoot', $tokens['0'][0])['points']);
+        $this->assertEquals(100000.0, $session->answer($qid, 1, 'shoot', $tokens['1'][0])['points']);
+    }
 }

@@ -426,7 +426,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
     }
 
     /**
-     * Scores are capped per second at the points times the maximum multiplier, and bonus points are added outside the cap.
+     * Scores are capped per second at the points times the maximum multiplier; bonus points have their own allowance.
      */
     public function test_bounded_score_rewards(): void {
         // Maximum-multiplier play (x4 of 1000 in the first second) is not clipped, as it would be by the plain cap.
@@ -436,6 +436,8 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->assertSame(6000, mod_quizgame_external::bounded_score(6000, 0.5, 4000, 2000));
         $this->assertSame(6000, mod_quizgame_external::bounded_score(9000, 0.5, 4000, 2000));
         $this->assertSame(3500, mod_quizgame_external::bounded_score(3500, 0.5, 4000, 2000));
+        // Bonus points have an allowance of their own, the same size as the cap: 4000 capped + 4000 of the bonus.
+        $this->assertSame(8000, mod_quizgame_external::bounded_score(1004000, 0.5, 4000, 1000000));
         // A negative game with a bonus still records 0 at worst.
         $this->assertSame(0, mod_quizgame_external::bounded_score(-500, 1, 1000, 1000));
     }

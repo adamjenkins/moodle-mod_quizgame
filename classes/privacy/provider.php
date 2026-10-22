@@ -136,6 +136,9 @@ class provider implements
         global $DB;
 
         $context = $userlist->get_context();
+        if (!$context instanceof \context_module) {
+            return;
+        }
         $userids = $userlist->get_userids();
         $instanceid = $DB->get_field('course_modules', 'instance', ['id' => $context->instanceid], MUST_EXIST);
         [$userinsql, $userinparams] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);

@@ -22,6 +22,7 @@
  *
  * @module    mod_quizgame/quizgame
  * @copyright 2016 John Okely <john@moodle.com>
+ * @copyright 2026 Adam Jenkins <adam@wisecat.net>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 define(['jquery', 'core/notification', 'core/ajax'], function($, notification, ajax) {

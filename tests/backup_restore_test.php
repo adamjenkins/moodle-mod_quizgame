@@ -277,4 +277,33 @@ final class backup_restore_test extends \advanced_testcase {
             $this->assert_settings_restore($settings, 'variant ' . $i . ': ');
         }
     }
+
+    /**
+     * A backup is untrusted input: settings outside the form's rules come back cleaned.
+     */
+    public function test_restore_cleans_settings(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course(['summary' => '']);
+        $category = $this->create_category($course);
+        // The generator writes the record as given, like a hand-edited backup would.
+        $this->getDataGenerator()->create_module('quizgame', [
+            'course' => $course->id,
+            'questioncategory' => $category->id . ',' . $category->contextid,
+            'pointscorrect' => 9999999999,
+            'misspenalty' => 9999999999,
+            'wrongpenalties' => '1,2,x',
+            'rewardbonusships' => 500,
+        ]);
+
+        $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
+
+        $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
+        $this->assertEquals(
+            [100000, 100000, '300', 10],
+            [$restored->pointscorrect, $restored->misspenalty, $restored->wrongpenalties, $restored->rewardbonusships]
+        );
+    }
 }

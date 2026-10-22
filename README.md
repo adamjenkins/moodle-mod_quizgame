@@ -76,7 +76,8 @@ them, which only spares itself the penalty.
 Each question can be played once per round; after every question has been played the
 round starts again, faster. A recorded score never exceeds *P* points per second that
 levels were open (*P* × the **Maximum multiplier** when the combo multiplier is on; bonus
-ship points come on top), so even a player who knows every answer earns points at a human
+ship points have a separate allowance of the same size, so a bonus round is never
+clipped), so even a player who knows every answer earns points at a human
 pace. When a recording player dies, the server stores the score it
 computed. If the page is closed mid-game, that game is recorded when the player starts
 the next one.

@@ -91,6 +91,8 @@ class game_session {
 
     /** @var array Allowed [minimum, maximum] of the whole-number Sassy and rewards settings (as in the settings form). */
     const INT_RANGES = [
+        'pointscorrect' => [1, 100000],
+        'misspenalty' => [0, 100000],
         'sassywrongtrigger' => [1, 20],
         'sassycleanneeded' => [1, 10],
         'sassybosslimit' => [2, 20],
@@ -197,7 +199,7 @@ class game_session {
         }
         $missbreak = $this->reward_on('rewardcombo') && $this->setting('rewardmissbreak');
         return [
-            'reportmisses' => (int) $this->setting('misspenalty') > 0 || $missbreak,
+            'reportmisses' => $this->int_setting('misspenalty') > 0 || $missbreak,
             'sassy' => $this->sassy(),
             'startlives' => $this->int_setting('startlives'),
             'speedramp' => $this->int_setting('speedramp'),
@@ -215,7 +217,45 @@ class game_session {
      * @return int
      */
     public function points_correct(): int {
-        return max(0, (int) $this->setting('pointscorrect'));
+        return $this->int_setting('pointscorrect');
+    }
+
+    /**
+     * Bring settings that did not come through the settings form (a restored backup) within the form's rules.
+     *
+     * Whole numbers are clamped to INT_RANGES and an invalid wrong-hit schedule falls back to the default.
+     * The game clamps again when it reads them, so older records are safe too.
+     *
+     * @param stdClass $data quizgame record (changed in place; fields it lacks are left out)
+     */
+    public static function clean_settings(stdClass $data): void {
+        foreach (self::INT_RANGES as $name => [$min, $max]) {
+            if (isset($data->$name)) {
+                $data->$name = min($max, max($min, (int) $data->$name));
+            }
+        }
+        if (isset($data->wrongpenalties)) {
+            $data->wrongpenalties = self::normalise_schedule((string) $data->wrongpenalties);
+        }
+    }
+
+    /**
+     * A wrong-hit schedule as the settings form allows it: comma-separated whole numbers up to 100000,
+     * at most 20 of them, spaces removed; anything else becomes the default schedule.
+     *
+     * @param string $schedule
+     * @return string
+     */
+    public static function normalise_schedule(string $schedule): string {
+        $schedule = preg_replace('/\s+/', '', $schedule);
+        $values = explode(',', $schedule);
+        $valid = preg_match('/^\d+(,\d+)*$/', $schedule) && count($values) <= 20;
+        foreach ($values as $value) {
+            if (strlen($value) > 6 || (int) $value > 100000) {
+                $valid = false;
+            }
+        }
+        return $valid ? $schedule : self::DEFAULTS['wrongpenalties'];
     }
 
     /**
@@ -857,7 +897,7 @@ class game_session {
         if ($attempt['dodge']) {
             return ['result' => 'dodge', 'points' => 0.0];
         }
-        $points = 0.0 - max(0, (int) $this->setting('misspenalty'));
+        $points = 0.0 - $this->int_setting('misspenalty');
         $attempt['score'] += $points;
         if ($this->reward_on('rewardcombo') && $this->setting('rewardmissbreak')) {
             $this->break_combo();
@@ -939,13 +979,8 @@ class game_session {
      * @return int[] never empty
      */
     protected function wrong_schedule(): array {
-        $schedule = [];
-        foreach (explode(',', preg_replace('/\s+/', '', (string) $this->setting('wrongpenalties'))) as $value) {
-            if ($value !== '' && ctype_digit($value)) {
-                $schedule[] = (int) $value;
-            }
-        }
-        return $schedule ?: [(int) self::DEFAULTS['wrongpenalties']];
+        $schedule = self::normalise_schedule((string) $this->setting('wrongpenalties'));
+        return array_map('intval', explode(',', $schedule));
     }
 
     /**

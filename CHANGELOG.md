@@ -20,6 +20,16 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 ### Changed
 - **Maximum lives** can now be from 1 to 10, but not lower than the starting lives.
 
+### Fixed (security self-audit)
+- Restoring a backup now cleans the scoring, Sassy and rewards settings like the settings
+  form does, and the game clamps them again when reading (a crafted backup could set the
+  points per hit, the miss penalty or the penalty schedule out of range).
+- Bonus-ship points now have an allowance of their own, the size of the points-per-second
+  limit, instead of being unlimited.
+- The privacy provider's delete for a list of users ignores contexts that are not this
+  activity's; new tests cover the user-list half of the provider.
+- CI tests Moodle 5.3 on `MOODLE_503_STABLE` instead of `main`.
+
 ---
 
 ## [2026102201] — Unreleased — Rewards for good play
@@ -32,7 +42,7 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
   each every 5 clean questions, and non-blocking praise messages (editable list). Each
   reward and its numbers are configurable under the new **Rewards** settings section.
   The server applies every rule; the points-per-second cap grows with the maximum
-  multiplier and bonus points are exempt from it.
+  multiplier and bonus points have a separate allowance of the same size.
 - New `lifelost` action, `bonus` result and reward fields in the `effects` structure of
   the `mod_quizgame_answer` response.
 - Backup and restore include the new settings.

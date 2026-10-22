@@ -120,6 +120,66 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
         $this->export_context_data_for_user($this->student->id, $cmcontext, 'mod_quizgame');
         $writer = \core_privacy\local\request\writer::with_context($cmcontext);
         $this->assertTrue($writer->has_any_data());
+        $data = $writer->get_data([]);
+        $this->assertEquals(['9999'], $data->score);
+        $this->assertCount(1, $data->timecreated);
+    }
+
+    /**
+     * Test for provider::get_users_in_context(): the players of the activity, nobody outside a module context.
+     */
+    public function test_get_users_in_context(): void {
+        $cm = get_coursemodule_from_instance('quizgame', $this->quizgame->id);
+        $cmcontext = \context_module::instance($cm->id);
+        $other = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->get_plugin_generator('mod_quizgame')->create_content(
+            $this->quizgame,
+            ['userid' => $other->id, 'score' => '10']
+        );
+
+        $userlist = new \core_privacy\local\request\userlist($cmcontext, 'mod_quizgame');
+        provider::get_users_in_context($userlist);
+        $expected = [$this->student->id, $other->id];
+        sort($expected);
+        $actual = $userlist->get_userids();
+        sort($actual);
+        $this->assertEquals($expected, $actual);
+
+        $userlist = new \core_privacy\local\request\userlist(\context_course::instance($this->course->id), 'mod_quizgame');
+        provider::get_users_in_context($userlist);
+        $this->assertCount(0, $userlist);
+    }
+
+    /**
+     * Test for provider::delete_data_for_users(): only the listed users' scores in that activity go.
+     */
+    public function test_delete_data_for_users(): void {
+        global $DB;
+        $generator = $this->getDataGenerator()->get_plugin_generator('mod_quizgame');
+        $cm = get_coursemodule_from_instance('quizgame', $this->quizgame->id);
+        $cmcontext = \context_module::instance($cm->id);
+        $other = $this->getDataGenerator()->create_user();
+        $generator->create_content($this->quizgame, ['userid' => $other->id, 'score' => '10']);
+        $quizgame2 = $this->getDataGenerator()->create_module('quizgame', ['course' => $this->course]);
+        $generator->create_content($quizgame2, ['userid' => $this->student->id, 'score' => '20']);
+
+        $userlist = new \core_privacy\local\request\approved_userlist($cmcontext, 'mod_quizgame', [$this->student->id]);
+        provider::delete_data_for_users($userlist);
+
+        $this->assertFalse(
+            $DB->record_exists('quizgame_scores', ['quizgameid' => $this->quizgame->id, 'userid' => $this->student->id])
+        );
+        $this->assertTrue($DB->record_exists('quizgame_scores', ['quizgameid' => $this->quizgame->id, 'userid' => $other->id]));
+        $this->assertTrue($DB->record_exists('quizgame_scores', ['quizgameid' => $quizgame2->id, 'userid' => $this->student->id]));
+
+        // A userlist for a non-module context deletes nothing.
+        $userlist = new \core_privacy\local\request\approved_userlist(
+            \context_course::instance($this->course->id),
+            'mod_quizgame',
+            [$other->id]
+        );
+        provider::delete_data_for_users($userlist);
+        $this->assertEquals(2, $DB->count_records('quizgame_scores'));
     }
 
     /**

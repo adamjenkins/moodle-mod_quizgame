@@ -31,13 +31,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Moodle 5.3. Its MOODLE_503_STABLE branch does not exist until 5.3.0 is released
-          # (due 2026-10-05); until then main is 5.3. Switch these rows to MOODLE_503_STABLE then.
+          # Moodle 5.3.
           - php: 8.4
-            moodle-branch: main
+            moodle-branch: MOODLE_503_STABLE
             database: pgsql
           - php: 8.3
-            moodle-branch: main
+            moodle-branch: MOODLE_503_STABLE
             database: mariadb
 
           # Moodle 5.2 (PHP 8.3 minimum). amd/build is built with this branch's toolchain.

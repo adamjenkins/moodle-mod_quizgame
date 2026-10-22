@@ -281,7 +281,8 @@ class mod_quizgame_external extends external_api {
     /**
      * Round a game score and keep it within 0 .. points per second x (seconds levels were open + 1).
      *
-     * Bonus ship points are exempt from the cap: only the rest of the score is capped, then the bonus is added.
+     * Bonus ship points do not count against that cap but have an allowance of their own of the same size, so a
+     * legitimate bonus round is never clipped while a scripted game is still held to a pace in time.
      *
      * @param float $score the server-computed score, bonus points included
      * @param float $leveltime seconds the game's levels were open (reading time excluded)
@@ -295,6 +296,7 @@ class mod_quizgame_external extends external_api {
         int $pointspersecond = self::MAX_POINTS_PER_SECOND,
         float $bonus = 0.0
     ): int {
-        return (int) max(0, min(round($score - $bonus), $pointspersecond * (floor($leveltime) + 1)) + round($bonus));
+        $cap = $pointspersecond * (floor($leveltime) + 1);
+        return (int) max(0, min(round($score - $bonus), $cap) + min(round($bonus), $cap));
     }
 }
