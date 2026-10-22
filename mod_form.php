@@ -245,7 +245,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
             'rewardmaxmult' => [4, 1, 10],
             'rewardlifestreak' => [5, 1, 50],
             // Validation also keeps it at least the starting lives.
-            'rewardmaxlives' => [5, 1, 10],
+            'rewardmaxlives' => [5, 1, 200],
             'rewardbonusstreak' => [5, 1, 50],
             'rewardbonuspoints' => [1000, 1, 100000],
             'rewardbonusships' => [2, 1, 10],

@@ -103,7 +103,7 @@ class game_session {
         'sassyswarmsize' => [5, 40],
         'rewardmaxmult' => [1, 10],
         'rewardlifestreak' => [1, 50],
-        'rewardmaxlives' => [1, 10],
+        'rewardmaxlives' => [1, 200],
         'rewardbonusstreak' => [1, 50],
         'rewardbonuspoints' => [1, 100000],
         'rewardbonusships' => [1, 10],

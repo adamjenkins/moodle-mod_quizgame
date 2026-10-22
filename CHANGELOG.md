@@ -18,7 +18,7 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 - Backup and restore include the new settings.
 
 ### Changed
-- **Maximum lives** can now be from 1 to 10, but not lower than the starting lives.
+- **Maximum lives** can now be from 1 to 200, but not lower than the starting lives.
 
 ### Fixed (security self-audit)
 - Restoring a backup now cleans the scoring, Sassy and rewards settings like the settings

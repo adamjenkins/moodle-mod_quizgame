@@ -814,10 +814,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     }
 
     /**
-     * Start a bonus round: two harmless bonus ships, before the question's own ships.
+     * Start a bonus round: the harmless bonus ships the server issued (as many as the activity sets),
+     * before the question's own ships.
      *
      * It starts once any +1 LIFE effect has played (the life first, then the bonus round), and ends
-     * when both ships are gone, shot or off screen; then the question goes on.
+     * when every bonus ship is gone, shot or off screen; then the question goes on.
      * @param {array} ships the bonus ships issued by the server, [{text, token}]
      * @param {function} then called when the bonus round is over
      */
@@ -825,7 +826,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         bonusRound = newBonusState();
         bonusRound.active = true;
         bonusRound.startAt = Math.max(Date.now(), lifeEffectsEnd());
-        bonusRound.tokens = ships.slice(0, 2);
+        bonusRound.tokens = ships.slice();
         bonusRound.then = then;
         question = M.util.get_string('rewards_bonusround', 'mod_quizgame');
     }
