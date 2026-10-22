@@ -231,6 +231,24 @@ final class game_session_test extends \advanced_testcase {
     }
 
     /**
+     * Give the current game a combo count without touching the clean streak (extra lives, bonus rounds).
+     *
+     * The combo starts with the second clean question; tests of its scoring start from one clean question so
+     * the first hit they play already raises it.
+     *
+     * @param game_session $session
+     * @param int $count
+     */
+    protected function seed_combo(game_session $session, int $count): void {
+        global $SESSION;
+        foreach ($SESSION->mod_quizgame as $id => $data) {
+            if (!empty($data['attempt'])) {
+                $SESSION->mod_quizgame[$id]['attempt']['combostreak'] = $count;
+            }
+        }
+    }
+
+    /**
      * Play one wrong shot per level and collect the penalties started, in order, until enough were seen.
      *
      * Each level is started, the clock moves past any reading time, and a wrong answer is shot once
@@ -1142,6 +1160,12 @@ final class game_session_test extends \advanced_testcase {
         $tokens = $this->answer_tokens($session, $qid);
         $right = fn($level) => $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
 
+        // The very first clean question earns no combo.
+        $this->assertEquals([1000.0, 1, ''], $this->pick($right(1), 'points', 'multiplier', 'combo'));
+        $session->start();
+        $tokens = $this->answer_tokens($session, $qid);
+        $this->seed_combo($session, 1);
+
         $result = $session->answer($qid, 1, 'levelstart');
         $this->assertEquals([1, ''], $this->pick($result, 'multiplier', 'combo'));
         // Each clean question raises the multiplier for the next hits, up to the maximum of 3.
@@ -1174,14 +1198,18 @@ final class game_session_test extends \advanced_testcase {
         $result = $right(4);
         $this->assertEquals([1000.0, 6650.0, 1, ''], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
 
+        // After the break the combo starts again from the second clean question.
         $session->answer($qid, 5, 'levelstart');
         $result = $right(5);
-        $this->assertEquals([1000.0, 7650.0, 2, 'up'], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
-        // Level 6 is let go: opening level 7 charges its answer unmultiplied (1000, not 2000) and keeps the streak.
+        $this->assertEquals([1000.0, 7650.0, 1, ''], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
         $session->answer($qid, 6, 'levelstart');
-        $result = $session->answer($qid, 7, 'levelstart');
-        $this->assertEquals([6650.0, 2, ''], $this->pick($result, 'score', 'multiplier', 'combo'));
-        $this->assertEquals(2000.0, $right(7)['points']);
+        $result = $right(6);
+        $this->assertEquals([1000.0, 8650.0, 2, 'up'], $this->pick($result, 'points', 'score', 'multiplier', 'combo'));
+        // Level 7 is let go: opening level 8 charges its answer unmultiplied (1000, not 2000) and keeps the streak.
+        $session->answer($qid, 7, 'levelstart');
+        $result = $session->answer($qid, 8, 'levelstart');
+        $this->assertEquals([7650.0, 2, ''], $this->pick($result, 'score', 'multiplier', 'combo'));
+        $this->assertEquals(2000.0, $right(8)['points']);
     }
 
     /**
@@ -1191,6 +1219,7 @@ final class game_session_test extends \advanced_testcase {
         $multi = $this->question('multichoice', 'two_of_four');
         $session = $this->start_session($this->reward_settings(['rewardcombo' => 1]));
         $tokens = $this->answer_tokens($session, $multi);
+        $this->seed_combo($session, 1);
 
         $this->assertEquals(500.0, $session->answer($multi, 1, 'shoot', $tokens['0.5'][0])['points']);
         $this->assertEquals(1, $session->multiplier());
@@ -1219,6 +1248,7 @@ final class game_session_test extends \advanced_testcase {
             $session->token('s', $bytext[$stem]->id),
             $session->token('m', $bytext[$answer]->id)
         );
+        $this->seed_combo($session, 1);
 
         foreach (['frog', 'cat', 'newt'] as $stem) {
             $result = $pair(1, $stem, $stem);
@@ -1254,8 +1284,9 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals('decoys', $session->answer($qid, 2, 'shoot', $tokens['0'][0])['effects']['penalty']);
         $session->answer($qid, 2, 'shoot', $tokens['1'][0]);
 
-        // Level 3 is clean while a cheater: the streak grows.
+        // Level 3 is clean while a cheater: the streak grows (from one earlier clean question, so the combo rises).
         $this->assertCount(1, $session->answer($qid, 3, 'levelstart')['effects']['decoys']);
+        $this->seed_combo($session, 1);
         $result = $session->answer($qid, 3, 'shoot', $tokens['1'][0]);
         $effects = $result['effects'];
         $this->assertEquals([1000.0, true, 2, 'up'], $this->pick($result, 'points', 'cheater', 'multiplier', 'combo'));
@@ -1283,6 +1314,8 @@ final class game_session_test extends \advanced_testcase {
         $this->assertTrue($session->answer($qid, 1, 'shoot', $tokens['0'][0])['effects']['cheater']);
         $this->assertEquals('readfirst', $session->answer($qid, 2, 'levelstart')['effects']['penalty']);
         $session->clock += 100;
+        // As if an earlier question had been clean, so this one raises the combo too.
+        $this->seed_combo($session, 1);
         $effects = $session->answer($qid, 2, 'shoot', $tokens['1'][0])['effects'];
         $this->assertEquals(
             [false, 2, 'up', get_string('rewards_redemption_msg', 'quizgame')],
@@ -1317,7 +1350,7 @@ final class game_session_test extends \advanced_testcase {
         $this->set_streak($session, 2);
         foreach ([['shoot', $tokens['0'][0]], ['miss', ''], ['shoot', $tokens['1'][0]]] as [$action, $token]) {
             $result = $session->answer($qid, 3, $action, $token);
-            $this->assertEquals(['dodge', 3, ''], $this->pick($result, 'result', 'multiplier', 'combo'));
+            $this->assertEquals(['dodge', 2, ''], $this->pick($result, 'result', 'multiplier', 'combo'));
         }
     }
 
@@ -1387,6 +1420,7 @@ final class game_session_test extends \advanced_testcase {
             'rewardpraise' => 1,
         ]));
         $tokens = $this->answer_tokens($session, $qid);
+        $this->seed_combo($session, 1);
 
         $this->assertEquals([], $session->answer($qid, 1, 'levelstart')['effects']['bonusships']);
         $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
@@ -1584,6 +1618,7 @@ final class game_session_test extends \advanced_testcase {
             'rewardbonusstreak' => 3,
         ]));
         $tokens = $this->answer_tokens($session, $qid);
+        $this->seed_combo($session, 1);
         $clean = function (int $level) use ($session, $qid, $tokens): array {
             $session->answer($qid, $level, 'levelstart');
             return $session->answer($qid, $level, 'shoot', $tokens['1'][0]);
@@ -1596,15 +1631,16 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals(['miss', 0.0, 1, 'break'], $this->pick($result, 'result', 'points', 'multiplier', 'combo'));
         // A second miss has no combo left to break.
         $this->assertEquals([1, ''], $this->pick($session->answer($qid, 3, 'miss'), 'multiplier', 'combo'));
-        // The hit pays x1, and the level is still clean: the multiplier rises again and the streak of 3
+        // The hit pays x1 and the level is still clean: the combo starts counting again, and the streak of 3
         // (kept through the miss) earns the bonus round.
         $result = $session->answer($qid, 3, 'shoot', $tokens['1'][0]);
-        $this->assertEquals([1000.0, 2, 'up'], $this->pick($result, 'points', 'multiplier', 'combo'));
+        $this->assertEquals([1000.0, 1, ''], $this->pick($result, 'points', 'multiplier', 'combo'));
         $this->assertCount(2, $session->answer($qid, 4, 'levelstart')['effects']['bonusships']);
 
         // Without the option (the default) a miss keeps the combo.
         $session = $this->start_session($this->reward_settings(['rewardcombo' => 1]));
         $tokens = $this->answer_tokens($session, $qid);
+        $this->seed_combo($session, 1);
         $session->answer($qid, 1, 'levelstart');
         $session->answer($qid, 1, 'shoot', $tokens['1'][0]);
         $session->answer($qid, 2, 'levelstart');

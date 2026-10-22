@@ -298,7 +298,8 @@ class game_session {
     }
 
     /**
-     * The current combo multiplier: 1 + the clean streak, capped at the maximum (1 when combos are off).
+     * The current combo multiplier: the clean streak (so the combo starts with the second clean question in a
+     * row), at least 1 and capped at the maximum (1 when combos are off).
      *
      * @return int
      */
@@ -307,7 +308,7 @@ class game_session {
             return 1;
         }
         $streak = (int) ($this->data()['attempt']['combostreak'] ?? 0);
-        return max(1, min($this->int_setting('rewardmaxmult'), 1 + $streak));
+        return max(1, min($this->int_setting('rewardmaxmult'), $streak));
     }
 
     /**

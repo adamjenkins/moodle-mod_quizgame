@@ -18,7 +18,10 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 - Backup and restore include the new settings.
 
 ### Changed
-- **Maximum lives** can now be from 1 to 200, but not lower than the starting lives.
+- **Maximum lives** and **Starting lives** can now be from 1 to 200 (the maximum not lower
+  than the starting lives).
+- The combo multiplier starts with the **second** clean question in a row (×2 after two,
+  ×3 after three...), so a single lucky answer earns no combo.
 
 ### Fixed (security self-audit)
 - Restoring a backup now cleans the scoring, Sassy and rewards settings like the settings

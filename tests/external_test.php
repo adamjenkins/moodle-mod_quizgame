@@ -452,15 +452,15 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->render_game();
         mod_quizgame_external::start_game($this->quizgame->id);
 
-        // A one-question game: 1000 x1, x2, x3.
+        // A one-question game: 1000 x1, x1 (the combo starts with the second clean question), x2, x3.
         $points = [];
-        for ($level = 1; $level <= 3; $level++) {
+        for ($level = 1; $level <= 4; $level++) {
             $points[] = $this->answer($level, 'shoot', $this->token(true))['points'];
         }
-        $this->assertEquals([1000.0, 2000.0, 3000.0], $points);
-        // Within a second the plain cap would record 1000; the cap of 10 x 1000 per second keeps all 6000.
+        $this->assertEquals([1000.0, 1000.0, 2000.0, 3000.0], $points);
+        // Within a second the plain cap would record 1000; the cap of 10 x 1000 per second keeps all 7000.
         $id = mod_quizgame_external::update_score($this->quizgame->id);
-        $this->assertEquals(6000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+        $this->assertEquals(7000, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
     }
 
     /**
@@ -496,12 +496,12 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'praise' => '',
         ], array_intersect_key($result['effects'], $this->no_rewards()));
 
-        // A clean question: the combo rises, a life is earned (its praise outranks the combo's).
+        // A clean question: a life is earned; the combo only starts with the second clean question.
         $result = $this->answer(1, 'shoot', $this->token(true));
         $this->assertEquals(['hit', 1000.0], [$result['result'], $result['points']]);
         $this->assertEquals([
-            'multiplier' => 2,
-            'combo' => 'up',
+            'multiplier' => 1,
+            'combo' => '',
             'lives' => 4,
             'lifegained' => true,
             'bonusships' => [],
@@ -514,7 +514,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->assertCount(2, $effects['bonusships']);
         $this->assertEquals(['+1000', '+1000'], array_column($effects['bonusships'], 'text'));
         $this->assertEquals(
-            [2, '', 4, false, get_string('rewards_bonus_msg', 'quizgame')],
+            [1, '', 4, false, get_string('rewards_bonus_msg', 'quizgame')],
             [$effects['multiplier'], $effects['combo'], $effects['lives'], $effects['lifegained'], $effects['praise']]
         );
         $result = $this->answer(2, 'shoot', $effects['bonusships'][0]['token']);

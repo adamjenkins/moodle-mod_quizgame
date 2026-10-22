@@ -146,7 +146,8 @@ and questions whose ships simply escaped neither extend nor break it. A clean qu
 cheater mode builds the streak as usual, so redemption starts earning rewards.
 
 - **Combo multiplier**: points for correct hits and matched pairs are multiplied by
-  1 + the clean streak (×1, ×2 after one clean question, ×3 after two...), up to
+  the clean streak, so the combo starts with the second clean question in a row (×1, then
+  ×2 after two clean questions, ×3 after three...), up to
   *Maximum multiplier* (default 4). The HUD shows "COMBO ×3" and flashes when it rises
   or breaks. Penalties, score drain, missed-at-close points and bonus ships are never
   multiplied. Combos can multiply a perfect game's score up to the maximum, so raise the
