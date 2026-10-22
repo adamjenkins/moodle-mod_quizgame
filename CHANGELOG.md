@@ -5,6 +5,35 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102203] — Unreleased — Editable "Read it first" messages, Switch bank, Moodle 5.2+
+
+### Added
+- **Question bank** line with a **Switch bank** button in the activity settings, like the
+  quiz's bank switcher (core `core_question/bank_switcher`): the **Question category** list
+  now shows the categories of the bank shown only, instead of every category of every
+  usable bank. A new activity starts with the first bank of the course; switching keeps
+  the values already entered. Only banks the editor may use questions from
+  (`moodle/question:useall`) are accepted. Editing an existing activity shows its saved
+  bank and category; the stored value (`questioncategory`) and its format are unchanged,
+  so upgrading keeps every activity's selection.
+- **Read it first messages** setting (Sassy section): the messages shown at the first
+  offence, before the question appears on its own for the reading time. One message per
+  line; `Line one || Line two` makes a two-step prompt; leave it empty for the built-in
+  messages. Backup and restore include the new setting.
+
+### Changed
+- **Requires Moodle 5.2** (`$plugin->requires = 2026042000`, `supported = [502, 503]`): the
+  bank switcher is core JavaScript added in 5.2. CI no longer runs Moodle 5.1.
+- **Breaking for customised language strings:** the lang strings `sassy_readfirst_msg` and
+  `sassy_readfirst_help` are replaced by a single string, `sassy_readfirst_default` (one
+  message per line), used when the new setting is empty. A site that customised the old
+  strings in Language customisation loses those texts on upgrade (the old keys are no
+  longer read). To keep them, copy the old texts into the new setting of each activity,
+  or into a customised `sassy_readfirst_default`: the old `sassy_readfirst_msg` text on
+  the first line and the old `sassy_readfirst_help` text on the second.
+
+---
+
 ## [2026102202] — Unreleased — Difficulty settings, more reward options
 
 ### Added

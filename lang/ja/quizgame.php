@@ -68,7 +68,7 @@ $string['howtoplay_help'] = '矢印キー、またはマウスでドラッグし
 $string['invalidcmorid'] = 'エラー: コースモジュールIDまたはインスタンスIDを指定する必要があります。';
 $string['invalidgameanswer'] = 'その解答はこの問題のものではありません。ページを再読み込みして、もう一度プレイしてください。';
 $string['invalidgamequestion'] = 'その問題は現在のゲームに含まれていません。ページを再読み込みして、もう一度プレイしてください。';
-$string['invalidquestioncategory'] = 'このコースの問題バンクから問題カテゴリを選択してください。';
+$string['invalidquestioncategory'] = '上に表示されている問題バンクの問題カテゴリを選択してください。';
 $string['loadinggame'] = 'ゲームを読み込んでいます';
 $string['misspenalty'] = '外れたショットのペナルティ';
 $string['modulename'] = 'クイズベンチャ';
@@ -92,8 +92,10 @@ $string['privacy:metadata:quizgame_scores:quizgameid'] = 'ユーザがプレイ�
 $string['privacy:metadata:quizgame_scores:score'] = 'そのプレイにおけるユーザのスコア';
 $string['privacy:metadata:quizgame_scores:timecreated'] = 'ユーザが クイズベンチャをプレイした日時を示すタイムスタンプ';
 $string['privacy:metadata:quizgame_scores:userid'] = 'この クイズベンチャ活動をプレイしたユーザのID';
+$string['questionbank'] = '問題バンク';
+$string['questionbank_help'] = 'ゲームが問題を取り出す問題バンクです。「バンクを切り替える」を押すと、このコースの別の問題バンク、または問題を使用できる他のコースの共有問題バンクを選択できます。問題カテゴリの一覧には、そのバンクのカテゴリが表示されます。';
 $string['questioncategory'] = '問題カテゴリ';
-$string['questioncategory_help'] = 'ゲームで使用する問題バンクのカテゴリを選択してください。
+$string['questioncategory_help'] = 'ゲームで使用する、上に表示されている問題バンクのカテゴリを選択してください。別の問題バンクを使用するには、先に「バンクを切り替える」を押してください。
 
 後で評価に使う重要な問題は選択しないでください。このゲームは、受験回数無制限で即座に正誤がわかる小テストを作成するのと同じようなものです。
 
@@ -149,6 +151,7 @@ $string['sassypenalty_dodge'] = '回避ラウンド';
 $string['sassypenalty_drain'] = 'スコア減少';
 $string['sassypenalty_returnfire'] = '反撃';
 $string['sassypenalty_reversed'] = '操作の左右反転';
+$string['sassyreadfirst'] = '「まず読む」のメッセージ';
 $string['sassyreadtime'] = '「まず読む」の読み時間 (秒)';
 $string['sassyswarmsize'] = '大群の宇宙船の数';
 $string['sassytaunts'] = '挑発メッセージ';
@@ -169,5 +172,7 @@ $string['speedrampstart_second'] = '2問目から';
 $string['speedrampstart_target'] = '目標スコアに達したとき';
 $string['speedroundjump'] = 'ラウンドごとの加速 (%)';
 $string['startlives'] = '最初のライフ数';
+$string['switchbank'] = 'バンクを切り替える';
+$string['switchbankupdate'] = '選択したバンクのカテゴリを表示する';
 $string['wrongpenalties'] = '不正解のペナルティ表';
 $string['yourbestscore'] = 'これまでのあなたの最高スコア: {$a}';

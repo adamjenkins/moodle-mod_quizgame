@@ -12,18 +12,18 @@ Supported question types: **multiple choice** (single and multiple answer),
 **true/false**, and **matching**. Other question types are skipped.
 
 This repository is a fork of the original Quizventure plugin by John Okely and Stephen
-Bourget, updated for Moodle 5.1–5.3.
+Bourget, updated for Moodle 5.2–5.3.
 
 Requirements
 ============
 
-- Moodle 5.1, 5.2 or 5.3 (questions come from 5.x question bank activities)
-- PHP 8.2 or later (8.3 or later for Moodle 5.2 and 5.3)
+- Moodle 5.2 or 5.3 (questions come from 5.x question bank activities)
+- PHP 8.3 or later
 
 Installation
 ============
 
-Download or clone this repository into `mod/quizgame/` (under `public/` on Moodle 5.1+),
+Download or clone this repository into `mod/quizgame/` (under `public/`),
 then log in as an administrator and go to *Site administration → Notifications* to run
 the installation.
 
@@ -32,13 +32,19 @@ Setup
 
 1. Add a question bank to the course (or use a shared question bank you have access to)
    and create multiple choice, true/false or matching questions in it.
-2. Add a *Quizventure* activity to the course and select the question category to use.
-   Tick **Also include questions from subcategories** to use the category's whole tree.
+2. Add a *Quizventure* activity to the course. The **Question bank** line shows the bank
+   the game takes its questions from (a new activity starts with the first bank of the
+   course); press **Switch bank** to pick another one, then select the question category
+   of that bank to use. Tick **Also include questions from subcategories** to use the
+   category's whole tree.
 
-The category picker lists the categories of question banks in this course, and of shared
-question banks in other courses, from which you may use questions
-(`moodle/question:useall`). Private banks of other courses' activities, such as a quiz's
-own questions, are never offered and never played.
+Like the quiz's bank switcher, **Switch bank** offers the question banks in this course,
+and shared question banks in other courses, from which you may use questions
+(`moodle/question:useall`); the **Question category** list shows the categories of the
+current bank only. Private banks of other courses' activities, such as a quiz's own
+questions, are never offered and never played. Editing an existing activity shows its
+saved bank and category; if you may not use that bank yourself, its category stays
+selectable as *Current category* so saving other settings does not change the questions.
 
 Players see each question many times with instant feedback, so do not point a game at a
 category that a graded quiz also draws from.
@@ -124,11 +130,10 @@ resets every game.
   - *Random*: either, chosen by the server.
 
 Every penalty start pauses the game on a message until the player presses fire. The
-*Taunt messages*, *Decoy ship labels* and *Boss finale lines* are editable lists, one entry
-per line; `Line one || Line two` is a two-step prompt, and an empty list uses the
-built-in defaults. The "Read it first" and reversed-controls lines are language strings
-(`sassy_readfirst_msg`, `sassy_readfirst_help`, `sassy_reversed_msg`), changeable through
-language customisation.
+*Read it first messages*, *Taunt messages*, *Decoy ship labels* and *Boss finale lines*
+are editable lists, one entry per line; `Line one || Line two` is a two-step prompt, and
+an empty list uses the built-in defaults. The reversed-controls line is a language string
+(`sassy_reversed_msg`), changeable through language customisation.
 
 Rewards
 =======
@@ -257,7 +262,9 @@ Compatibility
 |---|---|---|
 | 5.3 | 8.3, 8.4 | ✓ CI (on `main` until `MOODLE_503_STABLE` exists) |
 | 5.2 | 8.3, 8.4 | ✓ CI |
-| 5.1 | 8.2, 8.3 | ✓ CI |
+
+Moodle 5.1 and earlier are not supported (the bank selector uses the
+`core_question/bank_switcher` module added in 5.2).
 
 CI runs on PostgreSQL 17 and MariaDB 11.4.
 

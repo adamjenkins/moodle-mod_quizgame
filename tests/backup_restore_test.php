@@ -219,6 +219,7 @@ final class backup_restore_test extends \advanced_testcase {
             'sassytaunts' => "Taunt one\nTaunt || two",
             'sassydecoylabels' => "Nope\nNah",
             'sassybosslines' => 'The end || Really',
+            'sassyreadfirst' => 'Slow down || Read it',
         ];
         $this->assert_settings_restore($settings);
     }

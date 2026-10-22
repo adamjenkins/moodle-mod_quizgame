@@ -74,7 +74,7 @@ Clear as many questions as possible by shooting the correct answer.  Good Luck!'
 $string['invalidcmorid'] = 'Error: You must specify a course_module ID or an instance ID';
 $string['invalidgameanswer'] = 'That answer does not belong to this question. Reload the page and play again.';
 $string['invalidgamequestion'] = 'That question is not part of the current game. Reload the page and play again.';
-$string['invalidquestioncategory'] = 'Select a question category from a question bank in this course.';
+$string['invalidquestioncategory'] = 'Select a question category of the question bank shown above.';
 $string['loadinggame'] = 'Loading game';
 $string['misspenalty'] = 'Miss penalty';
 $string['misspenalty_help'] = 'Points lost for a shot that hits nothing. 0 (the default) means missing costs nothing.
@@ -106,8 +106,10 @@ $string['privacy:metadata:quizgame_scores:quizgameid'] = 'The ID of the quizgame
 $string['privacy:metadata:quizgame_scores:score'] = 'The score of the user during that playthrough.';
 $string['privacy:metadata:quizgame_scores:timecreated'] = 'The timestamp indicating when the quizgame was played by the user';
 $string['privacy:metadata:quizgame_scores:userid'] = 'The ID of the user playing this quizgame activity';
+$string['questionbank'] = 'Question bank';
+$string['questionbank_help'] = 'The question bank the game takes its questions from. Press "Switch bank" to choose another question bank in this course, or a shared question bank in another course that you may use questions from; the question category list then shows the categories of that bank.';
 $string['questioncategory'] = 'Question category';
-$string['questioncategory_help'] = 'Select the category from the question bank to use in the game.
+$string['questioncategory_help'] = 'Select the category of the question bank shown above to use in the game. To use another question bank, press "Switch bank" first.
 
 Note that you should only select questions that are not critical to assessment later on. The quiz game is similar to creating a quiz with infinite attempts and instant feedback on whether you got something right or wrong.
 
@@ -186,8 +188,8 @@ $string['sassy_help'] = 'Sassy enhancements detect guessing. After a number of w
 Each time cheater mode starts again is an offence. The first offence is always "Read it first" (the question is shown alone for a few seconds before the ships appear). Later offences apply the penalties enabled below, and the offence set as the boss finale limit ends the game with a score of 0.
 
 The server decides every penalty and keeps the score, so they cannot be skipped in the browser. Nothing about cheater mode is stored or reported to teachers; it resets every game.';
-$string['sassy_readfirst_help'] = 'Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!';
-$string['sassy_readfirst_msg'] = 'Take your time. No, really, take it.';
+$string['sassy_readfirst_default'] = 'Take your time. No, really, take it.
+Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!';
 $string['sassy_reading'] = 'Read the question...';
 $string['sassy_reversed_msg'] = 'Since you\'re not using your brain anyway, let\'s scramble your thumbs too.';
 $string['sassy_taunts_default'] = 'Are you ready? || I\'ll take that as a yes...
@@ -249,6 +251,8 @@ $string['sassypenalty_dodge'] = 'Dodge round';
 $string['sassypenalty_drain'] = 'Score drain';
 $string['sassypenalty_returnfire'] = 'Return fire';
 $string['sassypenalty_reversed'] = 'Reversed controls';
+$string['sassyreadfirst'] = 'Read it first messages';
+$string['sassyreadfirst_help'] = 'The messages shown at the first offence, before the question appears on its own for the reading time; one message per line, and the player presses fire to go to the next one. Write "Line one || Line two" for a two-step prompt. Leave empty for the built-in messages.';
 $string['sassyreadtime'] = 'Reading time for "Read it first" (seconds)';
 $string['sassyreadtime_help'] = 'How long the question is shown on its own, with firing disabled, before the ships appear in a "Read it first" penalty. Reading time does not count towards the points-per-second limit. Default 5.';
 $string['sassyswarmsize'] = 'Swarm size';
@@ -283,6 +287,8 @@ $string['speedroundjump'] = 'Speed-up per round (%)';
 $string['speedroundjump_help'] = 'Each time every question has been played and the questions start again, the enemy ships get this much faster. 0 turns it off. Default 30, as in earlier versions.';
 $string['startlives'] = 'Starting lives';
 $string['startlives_help'] = 'The number of lives a game starts with. Default 3.';
+$string['switchbank'] = 'Switch bank';
+$string['switchbankupdate'] = 'Show the categories of the selected bank';
 $string['wrongpenalties'] = 'Wrong-hit penalty schedule';
 $string['wrongpenalties_help'] = 'Points lost for the 1st, 2nd, 3rd... wrong hit within one question, separated by commas; the last value repeats. For example, 300,600,1000 costs 300 for the first wrong hit, 600 for the second and 1000 for every one after that.
 

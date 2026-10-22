@@ -43,6 +43,15 @@ class mod_quizgame_mod_form extends moodleform_mod {
     /** @var array|null Category ids the current user may choose, keyed by id (see get_category_options()). */
     protected $allowedcategoryids = null;
 
+    /** @var array Category ids of the shown question bank's own categories, keyed by id. */
+    protected $bankcategoryids = [];
+
+    /** @var string Option key ("categoryid,contextid") of the shown bank's default category, '' if none. */
+    protected $defaultcategorykey = '';
+
+    /** @var int Course-module id of the question bank whose categories the form shows, 0 if none. */
+    protected $qbankcmid = 0;
+
     /**
      * Defines forms elements
      */
@@ -62,26 +71,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
         // Adding the standard "intro" and "introformat" fields.
         $this->standard_intro_elements();
 
-        $categories = $this->get_category_options();
-        if (!$categories) {
-            $mform->addElement(
-                'static',
-                'noquestionbanks',
-                get_string('questioncategory', 'quizgame'),
-                get_string('noquestionbanks', 'quizgame')
-            );
-        }
-        $mform->addElement('selectgroups', 'questioncategory', get_string('questioncategory', 'quizgame'), $categories);
-        $mform->addRule('questioncategory', null, 'required', null, 'client');
-        $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
-
-        $mform->addElement(
-            'advcheckbox',
-            'questioncategorysubcats',
-            '',
-            get_string('questioncategorysubcats', 'quizgame')
-        );
-        $mform->addHelpButton('questioncategorysubcats', 'questioncategorysubcats', 'quizgame');
+        $this->add_question_bank_elements();
 
         // Grade settings: type/max, category, grade-to-pass (standard Moodle grade elements).
         $this->standard_grading_coursemodule_elements();
@@ -164,7 +154,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
             }
         }
 
-        foreach (['sassytaunts', 'sassydecoylabels', 'sassybosslines'] as $field) {
+        foreach (['sassyreadfirst', 'sassytaunts', 'sassydecoylabels', 'sassybosslines'] as $field) {
             $mform->addElement('textarea', $field, get_string($field, 'quizgame'), ['rows' => 6, 'cols' => 60]);
             $mform->setType($field, PARAM_TEXT);
             // New instances start with the built-in list, so teachers can see and edit it.
@@ -362,20 +352,101 @@ class mod_quizgame_mod_form extends moodleform_mod {
     }
 
     /**
-     * Build the question category options: categories of question banks in this course's
-     * activities, and of shared question banks in other courses, that the current user may use
-     * questions from.
+     * Add the question bank line (bank name and Switch bank button), the hidden current bank, the
+     * category select for that bank and the subcategories checkbox.
      *
-     * Option keys are "categoryid,contextid", the format the questioncategory field stores.
-     *
-     * @return array Options for a selectgroups element
+     * The bank is not stored: the game stores only its category ("categoryid,contextid"), and the
+     * bank is derived from the category's context. A reload by the Switch bank button submits the
+     * new bank's course-module id in qbankcmid, which is accepted only for a bank the user may use.
      */
-    protected function get_category_options(): array {
-        global $COURSE, $DB;
+    protected function add_question_bank_elements(): void {
+        global $PAGE;
 
-        $this->allowedcategoryids = [];
+        $mform = $this->_form;
+        $courseid = $this->_course->id;
+
+        $banks = $this->get_usable_banks();
+        $savedid = quizgame_get_category_id($this->current->questioncategory ?? '');
+        $savedbank = $this->get_category_bank_cmid($savedid);
+        $this->qbankcmid = self::choose_bank($banks, $savedbank, (int) $this->optional_param('qbankcmid', 0, PARAM_INT));
+
+        $mform->addElement('hidden', 'qbankcmid');
+        $mform->setType('qbankcmid', PARAM_INT);
+        // A constant, so a submitted bank that was rejected above is replaced by the bank shown.
+        $mform->setConstant('qbankcmid', $this->qbankcmid);
+
+        $categories = $this->get_category_options($banks, $savedid, $savedbank);
+
+        if ($this->qbankcmid) {
+            // Pressed by mod_quizgame/bank_selector after a bank is chosen: reloads the form with the
+            // entered values and the new bank, without saving.
+            $mform->registerNoSubmitButton('qbankswitch');
+            $bankline = [
+                $mform->createElement('static', 'qbankname', '', html_writer::span(
+                    $this->get_bank_name($this->qbankcmid),
+                    'me-3',
+                    ['data-region' => 'mod_quizgame-bankname']
+                )),
+                $mform->createElement('button', 'qbankswitchbutton', get_string('switchbank', 'quizgame'), [
+                    'data-action' => 'mod_quizgame-switchbank',
+                ]),
+                $mform->createElement('submit', 'qbankswitch', get_string('switchbankupdate', 'quizgame'), [
+                    'class' => 'd-none',
+                ]),
+            ];
+            $mform->addGroup($bankline, 'qbankgroup', get_string('questionbank', 'quizgame'), ' ', false);
+            $mform->addHelpButton('qbankgroup', 'questionbank', 'quizgame');
+
+            $PAGE->requires->js_call_amd('mod_quizgame/bank_selector', 'init', [
+                (int) $courseid,
+                (int) context_course::instance($courseid)->id,
+                (int) $this->qbankcmid,
+                // The banks route needs a module context: this activity, or the bank shown when adding one.
+                (int) (!empty($this->_cm->id) ? $this->_cm->id : $this->qbankcmid),
+            ]);
+        }
+
+        if (!$categories) {
+            $mform->addElement(
+                'static',
+                'noquestionbanks',
+                get_string('questioncategory', 'quizgame'),
+                get_string('noquestionbanks', 'quizgame')
+            );
+        }
+        $mform->addElement('selectgroups', 'questioncategory', get_string('questioncategory', 'quizgame'), $categories);
+        $mform->addRule('questioncategory', null, 'required', null, 'client');
+        $mform->addHelpButton('questioncategory', 'questioncategory', 'quizgame');
+        if ($this->defaultcategorykey !== '') {
+            // New activities start on the default category of the bank shown.
+            $mform->setDefault('questioncategory', $this->defaultcategorykey);
+        }
+
+        $mform->addElement(
+            'advcheckbox',
+            'questioncategorysubcats',
+            '',
+            get_string('questioncategorysubcats', 'quizgame')
+        );
+        $mform->addHelpButton('questioncategorysubcats', 'questioncategorysubcats', 'quizgame');
+    }
+
+    /**
+     * The question banks the current user may take a game's questions from: banks in this course's
+     * activities, and shared question banks in other courses, with moodle/question:useall in the
+     * bank. Private banks of other courses' activities (e.g. a quiz's own questions) never qualify.
+     *
+     * Ordered shared banks of this course first, then the other banks of this course (such as a
+     * quiz's own questions), then shared banks of other courses; by course-module id within each.
+     *
+     * @return context_module[] bank contexts keyed by course-module id
+     */
+    protected function get_usable_banks(): array {
+        global $DB;
+
+        $courseid = $this->_course->id;
         $sharedmods = \core_question\local\bank\question_bank_helper::get_activity_types_with_shareable_questions();
-        $params = ['ctxlevel' => CONTEXT_MODULE, 'courseid' => $COURSE->id];
+        $params = ['ctxlevel' => CONTEXT_MODULE, 'courseid' => $courseid];
         $sharedsql = '';
         if ($sharedmods) {
             [$modsql, $modparams] = $DB->get_in_or_equal($sharedmods, SQL_PARAMS_NAMED, 'mod');
@@ -383,8 +454,8 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $params += $modparams;
         }
         // Banks in this course, plus shared banks anywhere (private banks of other courses never).
-        $contextids = $DB->get_fieldset_sql(
-            "SELECT DISTINCT qc.contextid
+        $records = $DB->get_records_sql(
+            "SELECT DISTINCT cm.id AS cmid, ctx.id AS contextid, cm.course, m.name AS modname
                FROM {question_categories} qc
                JOIN {context} ctx ON ctx.id = qc.contextid AND ctx.contextlevel = :ctxlevel
                JOIN {course_modules} cm ON cm.id = ctx.instanceid AND cm.deletioninprogress = 0
@@ -392,31 +463,154 @@ class mod_quizgame_mod_form extends moodleform_mod {
               WHERE cm.course = :courseid $sharedsql",
             $params
         );
-        $contexts = [];
-        foreach ($contextids as $contextid) {
-            $context = context::instance_by_id($contextid, IGNORE_MISSING);
+        $rank = function ($record) use ($courseid, $sharedmods): int {
+            if ($record->course == $courseid) {
+                return in_array($record->modname, $sharedmods, true) ? 0 : 1;
+            }
+            return 2;
+        };
+        usort($records, function ($a, $b) use ($rank): int {
+            return [$rank($a), (int) $a->cmid] <=> [$rank($b), (int) $b->cmid];
+        });
+
+        $banks = [];
+        foreach ($records as $record) {
+            $context = context::instance_by_id($record->contextid, IGNORE_MISSING);
             if ($context && has_capability('moodle/question:useall', $context)) {
-                $contexts[] = $context;
+                $banks[(int) $record->cmid] = $context;
             }
         }
-        $categories = $contexts ? qbank_managecategories\helper::question_category_options($contexts, false, 0) : [];
-        foreach ($categories as $options) {
-            foreach (array_keys($options) as $key) {
-                $this->allowedcategoryids[quizgame_get_category_id($key)] = true;
+        return $banks;
+    }
+
+    /**
+     * The course-module id of the question bank holding a category, if that category may feed a
+     * game in this course (quizgame_category_allowed()).
+     *
+     * @param int $categoryid question category id, 0 for none
+     * @return int course-module id, 0 if none
+     */
+    protected function get_category_bank_cmid(int $categoryid): int {
+        global $DB;
+
+        if (!$categoryid || !quizgame_category_allowed($categoryid, $this->_course->id)) {
+            return 0;
+        }
+        $contextid = $DB->get_field('question_categories', 'contextid', ['id' => $categoryid]);
+        $context = context::instance_by_id($contextid, IGNORE_MISSING);
+        return $context ? (int) $context->instanceid : 0;
+    }
+
+    /**
+     * Choose the question bank the form shows.
+     *
+     * A submitted bank (after Switch bank) is accepted when the user may use it, or when it is the
+     * bank of the activity's saved category; otherwise the saved category's bank is shown, and for a
+     * new activity (or a category that is gone) the first usable bank.
+     *
+     * @param context_module[] $banks usable banks keyed by course-module id (get_usable_banks())
+     * @param int $savedbank course-module id of the saved category's bank, 0 if none
+     * @param int $submitted course-module id submitted in qbankcmid, 0 if none
+     * @return int course-module id, 0 if there is no bank to show
+     */
+    protected static function choose_bank(array $banks, int $savedbank, int $submitted): int {
+        if ($submitted > 0 && (isset($banks[$submitted]) || $submitted === $savedbank)) {
+            return $submitted;
+        }
+        if ($savedbank) {
+            return $savedbank;
+        }
+        return (int) (array_key_first($banks) ?? 0);
+    }
+
+    /**
+     * The name of a question bank as shown on the Question bank line, with its course's short name
+     * when the bank is in another course.
+     *
+     * @param int $cmid the bank's course-module id
+     * @return string HTML-safe name
+     */
+    protected function get_bank_name(int $cmid): string {
+        [$course, $cm] = get_course_and_cm_from_cmid($cmid);
+        $name = $cm->get_formatted_name();
+        if ($course->id != $this->_course->id) {
+            $name = get_string('coursenamebankname', 'question', (object) [
+                'coursename' => format_string($course->shortname, true, ['context' => context_course::instance($course->id)]),
+                'bankname' => $name,
+            ]);
+        }
+        return $name;
+    }
+
+    /**
+     * Build the question category options: the categories of the bank shown ($this->qbankcmid),
+     * plus the game's saved category when it is in a bank the current user may not use, so saving
+     * other settings never silently switches the questions.
+     *
+     * Option keys are "categoryid,contextid", the format the questioncategory field stores.
+     *
+     * @param context_module[] $banks usable banks keyed by course-module id (get_usable_banks())
+     * @param int $savedid the activity's saved category id, 0 if none
+     * @param int $savedbank course-module id of the saved category's bank, 0 if none
+     * @return array Options for a selectgroups element
+     */
+    protected function get_category_options(array $banks, int $savedid, int $savedbank): array {
+        global $DB;
+
+        $this->allowedcategoryids = [];
+        $this->bankcategoryids = [];
+        $this->defaultcategorykey = '';
+        $categories = [];
+        if (isset($banks[$this->qbankcmid])) {
+            $bankcontext = $banks[$this->qbankcmid];
+            $categories = qbank_managecategories\helper::question_category_options([$bankcontext], false, 0);
+            foreach ($categories as $options) {
+                foreach (array_keys($options) as $key) {
+                    $id = quizgame_get_category_id($key);
+                    $this->allowedcategoryids[$id] = true;
+                    $this->bankcategoryids[$id] = true;
+                    if ($this->defaultcategorykey === '') {
+                        $this->defaultcategorykey = (string) $key;
+                    }
+                }
+            }
+            $default = question_get_default_category($bankcontext->id);
+            if ($default && isset($this->bankcategoryids[$default->id])) {
+                $this->defaultcategorykey = $default->id . ',' . $default->contextid;
             }
         }
 
-        // Keep the game's current category selectable even if this editor may not use its bank,
-        // so saving other settings never silently switches the questions.
-        $currentid = quizgame_get_category_id($this->current->questioncategory ?? '');
-        if ($currentid && !isset($this->allowedcategoryids[$currentid]) && quizgame_category_allowed($currentid, $COURSE->id)) {
-            $current = $DB->get_record('question_categories', ['id' => $currentid], 'id, name, contextid', MUST_EXIST);
+        // Keep the game's current category selectable even if this editor may not use its bank.
+        if ($savedbank && !isset($banks[$savedbank])) {
+            $current = $DB->get_record('question_categories', ['id' => $savedid], 'id, name, contextid', MUST_EXIST);
             $categories = [get_string('currentcategory', 'quizgame') => [
                 $current->id . ',' . $current->contextid => format_string($current->name),
             ]] + $categories;
-            $this->allowedcategoryids[$currentid] = true;
+            $this->allowedcategoryids[$savedid] = true;
         }
         return $categories;
+    }
+
+    /**
+     * After Switch bank, select the new bank's default category instead of the previous bank's one.
+     */
+    public function definition_after_data() {
+        parent::definition_after_data();
+
+        $mform = $this->_form;
+        if (
+            $this->defaultcategorykey === '' || !$mform->elementExists('questioncategory')
+            || $this->optional_param('qbankswitch', '', PARAM_RAW) === ''
+        ) {
+            return;
+        }
+        $value = $mform->getElement('questioncategory')->getValue();
+        $value = is_array($value) ? (string) reset($value) : (string) $value;
+        if (!isset($this->bankcategoryids[quizgame_get_category_id($value)])) {
+            // A constant, so set_data() does not put the submitted category back. This request
+            // never saves (the button is a no-submit button), and the next one starts afresh.
+            $mform->setConstant('questioncategory', $this->defaultcategorykey);
+        }
     }
 
     /**
@@ -602,5 +796,9 @@ class mod_quizgame_mod_form extends moodleform_mod {
                 $defaultvalues['questioncategory'] = $categoryid . ',' . $contextid;
             }
         }
+
+        // The bank shown is derived from the stored category in definition() (the category list
+        // depends on it); qbankcmid is a constant, this only keeps the defaults complete.
+        $defaultvalues['qbankcmid'] = $this->qbankcmid;
     }
 }

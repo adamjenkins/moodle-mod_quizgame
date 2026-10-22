@@ -789,10 +789,8 @@ class game_session {
                 // Reading time does not count as time the level was open (the per-second cap).
                 $attempt['levelopened'] = $attempt['readuntil'];
                 $attempt['response']['readtime'] = $readtime;
-                $this->queue_messages([
-                    $this->format_line(get_string('sassy_readfirst_msg', 'mod_quizgame')),
-                    $this->format_line(get_string('sassy_readfirst_help', 'mod_quizgame')),
-                ]);
+                // The teacher's "Read it first" messages, every one shown in order (each step its own pause).
+                $this->queue_messages(array_merge(...$this->message_list('sassyreadfirst', 'sassy_readfirst_default')));
                 break;
             case 'reversed':
                 $attempt['reversed'] = true;

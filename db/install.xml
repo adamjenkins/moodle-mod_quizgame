@@ -36,6 +36,7 @@
         <FIELD NAME="sassytaunts" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Taunt messages, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassydecoylabels" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Decoy ship labels, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassybosslines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Boss finale lines, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassyreadfirst" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Read it first messages, one per line (empty: built-in defaults)"/>
         <FIELD NAME="rewards" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether rewards for good play are enabled"/>
         <FIELD NAME="rewardcombo" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether the combo multiplier is enabled"/>
         <FIELD NAME="rewardmaxmult" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="4" SEQUENCE="false" COMMENT="Maximum combo multiplier"/>

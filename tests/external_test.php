@@ -336,8 +336,8 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->assertEquals('started', $result['result']);
         $this->assertEquals([
             'messages' => [
-                get_string('sassy_readfirst_msg', 'quizgame'),
-                get_string('sassy_readfirst_help', 'quizgame'),
+                'Take your time. No, really, take it.',
+                'Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!',
             ],
             'penalty' => 'readfirst',
             'cheater' => true,

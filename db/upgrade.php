@@ -249,6 +249,18 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026102202, 'quizgame');
     }
 
+    if ($oldversion < 2026102203) {
+        // Editable "Read it first" messages (empty: the built-in lines). Nothing else is touched; in
+        // particular the question category of every activity stays as it is.
+        $table = new xmldb_table('quizgame');
+        $field = new xmldb_field('sassyreadfirst', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassybosslines');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026102203, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }

@@ -72,6 +72,7 @@ class backup_quizgame_activity_structure_step extends backup_activity_structure_
             'sassytaunts',
             'sassydecoylabels',
             'sassybosslines',
+            'sassyreadfirst',
             'rewards',
             'rewardcombo',
             'rewardmaxmult',

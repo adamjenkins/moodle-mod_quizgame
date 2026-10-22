@@ -28,9 +28,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version  = 2026102202;      // If version == 0 then module will not be installed.
-$plugin->requires = 2025100600;      // Requires Moodle 5.1 (module-level question banks).
-$plugin->supported = [501, 503];     // Moodle 5.1 to 5.3.
+$plugin->version  = 2026102203;      // If version == 0 then module will not be installed.
+$plugin->requires = 2026042000;      // Requires Moodle 5.2 (the core_question/bank_switcher module).
+$plugin->supported = [502, 503];     // Moodle 5.2 to 5.3.
 $plugin->component = 'mod_quizgame'; // To check on upgrade, that module sits in correct place.
 $plugin->maturity = MATURITY_STABLE;
 $plugin->release = 'v5.0';

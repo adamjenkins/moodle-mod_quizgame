@@ -770,8 +770,8 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals('readfirst', $result['effects']['penalty']);
         $this->assertEquals(7, $result['effects']['readtime']);
         $this->assertSame([
-            get_string('sassy_readfirst_msg', 'quizgame'),
-            get_string('sassy_readfirst_help', 'quizgame'),
+            'Take your time. No, really, take it.',
+            'Read the question, then shoot only the ship with the correct answer. Ships appear in a moment. I\'ll wait!',
         ], $result['effects']['messages']);
 
         // While reading, shots and misses are blocked: no points and no wrong hit (it would start the drain).
@@ -1721,5 +1721,22 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals(-100000.0, $session->answer($qid, 1, 'miss')['points']);
         $this->assertEquals(-300.0, $session->answer($qid, 1, 'shoot', $tokens['0'][0])['points']);
         $this->assertEquals(100000.0, $session->answer($qid, 1, 'shoot', $tokens['1'][0])['points']);
+    }
+
+    /**
+     * The teacher's own "Read it first" messages replace the built-in ones, steps and all, formatted.
+     */
+    public function test_read_it_first_custom_messages(): void {
+        $qid = $this->question('truefalse', 'true');
+        $session = $this->start_session($this->sassy_settings([
+            'sassyreadfirst' => "Whoa there, <b>pilot</b>! || Breathe.\n\nRead first, then shoot.",
+        ]), true);
+        $tokens = $this->answer_tokens($session, $qid);
+
+        $session->answer($qid, 1, 'levelstart');
+        $session->answer($qid, 1, 'shoot', $tokens['0'][0]);
+        $result = $session->answer($qid, 2, 'levelstart');
+        $this->assertEquals('readfirst', $result['effects']['penalty']);
+        $this->assertSame(['Whoa there, pilot!', 'Breathe.', 'Read first, then shoot.'], $result['effects']['messages']);
     }
 }
