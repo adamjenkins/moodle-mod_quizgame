@@ -73,6 +73,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         speedtarget: 0, bonusspeed: 100, decoylabels: []};
     var speedRampOn = false;
     var messageQueue = [];
+    // When the message on screen appeared; fire presses are ignored for MESSAGE_LOCK ms after that,
+    // so a player still mashing fire reads it before it goes.
+    var messageShownAt = 0;
+    var MESSAGE_LOCK = 1000;
     var afterMessages = [];
     var readingUntil = 0;
     var pendingSpawn = null;
@@ -169,10 +173,23 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     }
 
     /**
+     * Whether the message on screen can be dismissed yet.
+     * @return {boolean}
+     */
+    function messageUnlocked() {
+        return Date.now() - messageShownAt >= MESSAGE_LOCK;
+    }
+
+    /**
      * Move on to the next pause message; after the last one, play resumes.
+     * Ignored while the message on screen is newer than MESSAGE_LOCK.
      */
     function advanceMessage() {
+        if (!messageUnlocked()) {
+            return;
+        }
         messageQueue.shift();
+        messageShownAt = Date.now();
         if (!isPaused()) {
             var callbacks = afterMessages;
             afterMessages = [];
@@ -193,6 +210,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             return;
         }
         if (effects.messages && effects.messages.length) {
+            if (!isPaused()) {
+                messageShownAt = Date.now();
+            }
             messageQueue = messageQueue.concat(effects.messages.filter(function(line) {
                 return typeof line === 'string' && line !== '';
             }));
@@ -1167,9 +1187,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         context.font = "20px Audiowide";
         context.textAlign = 'center';
         wrapText(context, messageQueue[0], false, 24, displayRect.width * 0.85, displayRect.width / 2, top + 15);
-        context.fillStyle = '#FFFFFF';
-        context.font = "14px Audiowide";
-        context.fillText(M.util.get_string('sassy_continue', 'mod_quizgame'), displayRect.width / 2, top + bandHeight - 15);
+        if (messageUnlocked()) {
+            context.fillStyle = '#FFFFFF';
+            context.font = "14px Audiowide";
+            context.fillText(M.util.get_string('sassy_continue', 'mod_quizgame'), displayRect.width / 2, top + bandHeight - 15);
+        }
     }
 
     /**

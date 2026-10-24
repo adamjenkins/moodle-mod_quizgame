@@ -8,6 +8,8 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 ## [2026102203] — Unreleased — Editable "Read it first" messages, Switch bank, Moodle 5.2+
 
 ### Added
+- Pause messages (Read it first, taunts, boss lines) ignore fire presses, clicks and taps for
+  their first second, so a player still mashing fire cannot dismiss them unread.
 - The big boss now weaves above the player for 3 to 5 seconds before it fires, and the
   player's shots spark off it, so the player seems to have a chance.
 - **Question bank** line with a **Switch bank** button in the activity settings, like the

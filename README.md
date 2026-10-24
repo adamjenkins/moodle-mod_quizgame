@@ -130,7 +130,8 @@ resets every game.
     player has lost every life.
   - *Random*: either, chosen by the server.
 
-Every penalty start pauses the game on a message until the player presses fire. The
+Every penalty start pauses the game on a message until the player presses fire (presses in
+the first second of each message are ignored, so mashing fire does not skip it unread). The
 *Read it first messages*, *Taunt messages*, *Decoy ship labels* and *Boss finale lines*
 are editable lists, one entry per line; `Line one || Line two` is a two-step prompt, and
 an empty list uses the built-in defaults. The reversed-controls line is a language string
