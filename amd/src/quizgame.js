@@ -1548,7 +1548,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * Send a laser back down from this ship, as when a wrong answer deflects a shot.
      */
     Enemy.prototype.deflectShot = function() {
-        var laser = new Laser(this.x + this.image.width / 2, this.y + this.image.height, false, 24);
+        // The laser sprite is as wide as the ship, with the beam in its middle: line their left edges up.
+        var laser = new Laser(this.x + (this.image.width - SHIP_SIZE) / 2, this.y + this.image.height, false, 24);
         laser.direction.y = 1;
         gameObjects.unshift(laser);
         playSound("deflect");
