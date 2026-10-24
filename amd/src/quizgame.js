@@ -1540,7 +1540,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      */
     Enemy.prototype.die = function(hit) {
         GameObject.prototype.die.call(this);
-        spray(this.x + this.image.width, this.y + this.image.height, hit ? 200 : 50, "#FF0000");
+        spray(this.x + this.image.width / 2, this.y + this.image.height / 2, hit ? 200 : 50, "#FF0000");
         playSound("explosion");
     };
 
