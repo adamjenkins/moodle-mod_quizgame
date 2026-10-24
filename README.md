@@ -162,8 +162,8 @@ cheater mode builds the streak as usual, so redemption starts earning rewards.
   the combo* ticked (off by default), a shot that hits nothing also sets the multiplier
   back to ×1, while the clean streak towards extra lives and bonus rounds is kept.
 - **Extra life**: one more life every *Clean questions in a row per extra life* (default
-  5), while the player has fewer than *Maximum lives* (default 5; at least the starting
-  lives, see *Difficulty*).
+  5), while the player has fewer than *Maximum lives* (in the *Difficulty* section, shown
+  while extra lives are on; default 5, at least the starting lives).
 - **Bonus round**: after every *Clean questions in a row for bonus round* (default 5),
   the next question is preceded by a bonus round ("Now THAT's how you play! Bonus
   round!"): *Bonus ships per round* (default 2) bonus ships in different colours, worth
@@ -184,15 +184,22 @@ Difficulty
 Under **Difficulty** in the activity settings:
 
 - **Starting lives** (default 3): the lives a game starts with.
-- **Speed-up per question** (default 5%): once started, every new question makes the
+- **Maximum lives** (default 5, shown while the *Extra life* reward is on): no extra life is
+  awarded while the player has this many. It cannot be lower than the starting lives.
+- **Speed-up per question** (default 0%, off): once started, every new question makes the
   enemy ships this much faster, so the game keeps getting harder until it ends. 0 turns it
   off. **Speed-up starts**: once the score target is reached (the default; the completion
   score if the activity has one, otherwise the game score for maximum grade, and after the
   first round when there is neither), after the first round, or from the second question.
   Once started it runs to the end of the game.
-- **Speed-up per round** (default 30%, as in earlier versions): each time every question
+- **Speed-up per round** (default 0%, off; earlier versions always used 30%): each time every question
   has been played and the questions start again, the ships get this much faster. 0 turns
   it off.
+- **Play area width** (default *Fill the screen*): *Fill the screen* keeps the ships at
+  their normal size, so a bigger screen or full screen mode gives more space. A width of
+  12 to 40 ships fixes the play area instead and zooms it to fill the game area, or the
+  whole screen in full screen mode: the ships get bigger rather than further apart, and
+  every player gets the same space. The height follows the screen's proportions.
 
 Speed only makes the game harder, never adds points, so it is applied by the browser; the
 server's scoring and points-per-second limit are unchanged.

@@ -40,6 +40,9 @@ require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class mod_quizgame_mod_form extends moodleform_mod {
+    /** @var int[] Play area widths offered, in ships (0, fill the screen, is offered too). */
+    const PLAY_WIDTHS = [12, 15, 20, 25, 30, 40];
+
     /** @var array|null Category ids the current user may choose, keyed by id (see get_category_options()). */
     protected $allowedcategoryids = null;
 
@@ -219,7 +222,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
     protected static function reward_toggles(): array {
         return [
             'rewardcombo' => ['rewardmaxmult', 'rewardmissbreak'],
-            'rewardlife' => ['rewardlifestreak', 'rewardmaxlives'],
+            'rewardlife' => ['rewardlifestreak'],
             'rewardbonus' => ['rewardbonusstreak', 'rewardbonuspoints', 'rewardbonusships', 'rewardbonusspeed'],
             'rewardpraise' => ['rewardpraiselines'],
         ];
@@ -234,8 +237,6 @@ class mod_quizgame_mod_form extends moodleform_mod {
         return [
             'rewardmaxmult' => [4, 1, 10],
             'rewardlifestreak' => [5, 1, 50],
-            // Validation also keeps it at least the starting lives.
-            'rewardmaxlives' => [5, 1, 200],
             'rewardbonusstreak' => [5, 1, 50],
             'rewardbonuspoints' => [1000, 1, 100000],
             'rewardbonusships' => [2, 1, 10],
@@ -244,7 +245,7 @@ class mod_quizgame_mod_form extends moodleform_mod {
     }
 
     /**
-     * Add the Difficulty section: starting lives and how the enemy ships speed up.
+     * Add the Difficulty section: starting and maximum lives, how the enemy ships speed up and the play area width.
      */
     protected function add_difficulty_elements(): void {
         $mform = $this->_form;
@@ -252,12 +253,15 @@ class mod_quizgame_mod_form extends moodleform_mod {
         $mform->addElement('header', 'speedhdr', get_string('speedhdr', 'quizgame'));
 
         $intfields = self::difficulty_int_fields();
-        foreach (['startlives', 'speedramp'] as $field) {
+        foreach (['startlives', 'rewardmaxlives', 'speedramp'] as $field) {
             $mform->addElement('text', $field, get_string($field, 'quizgame'), ['size' => '6']);
             $mform->setType($field, PARAM_INT);
             $mform->setDefault($field, $intfields[$field][0]);
             $mform->addHelpButton($field, $field, 'quizgame');
         }
+        // The maximum only matters while extra lives can be won.
+        $mform->hideIf('rewardmaxlives', 'rewards', 'notchecked');
+        $mform->hideIf('rewardmaxlives', 'rewardlife', 'notchecked');
 
         $options = [
             0 => get_string('speedrampstart_target', 'quizgame'),
@@ -273,6 +277,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
         $mform->setType('speedroundjump', PARAM_INT);
         $mform->setDefault('speedroundjump', $intfields['speedroundjump'][0]);
         $mform->addHelpButton('speedroundjump', 'speedroundjump', 'quizgame');
+
+        $options = [0 => get_string('playwidth_fill', 'quizgame')];
+        foreach (self::PLAY_WIDTHS as $ships) {
+            $options[$ships] = get_string('playwidth_ships', 'quizgame', $ships);
+        }
+        $mform->addElement('select', 'playwidth', get_string('playwidth', 'quizgame'), $options);
+        $mform->setDefault('playwidth', 0);
+        $mform->addHelpButton('playwidth', 'playwidth', 'quizgame');
     }
 
     /**
@@ -283,8 +295,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
     protected static function difficulty_int_fields(): array {
         return [
             'startlives' => [3, 1, 200],
-            'speedramp' => [5, 0, 50],
-            'speedroundjump' => [30, 0, 200],
+            // Validation also keeps it at least the starting lives (only checked while extra lives are on).
+            'rewardmaxlives' => [5, 1, 200],
+            'speedramp' => [0, 0, 50],
+            'speedroundjump' => [0, 0, 200],
         ];
     }
 
@@ -683,6 +697,10 @@ class mod_quizgame_mod_form extends moodleform_mod {
         }
 
         foreach (self::difficulty_int_fields() as $field => [, $min, $max]) {
+            $extralives = !empty($data['rewards']) && !empty($data['rewardlife']);
+            if ($field === 'rewardmaxlives' && !$extralives) {
+                continue;
+            }
             if (array_key_exists($field, $data)) {
                 self::validate_range($errors, $data, $field, $min, $max);
             }

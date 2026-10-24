@@ -5,6 +5,22 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102205] — Unreleased — Fixed play area width, speed-ups off by default
+
+### Added
+- **Play area width** (Difficulty section): a fixed width of 12 to 40 ships, zoomed to fill
+  the game area or the whole screen in full screen mode, so ships get bigger on a bigger
+  screen instead of further apart. The default, *Fill the screen*, keeps today's behaviour.
+  New column `quizgame.playwidth` (upgrade step 2026102204), backed up and restored
+  (clamped to 0–60).
+
+### Changed
+- **Maximum lives** moved from the Rewards section to **Difficulty**, next to the starting
+  lives (still shown only while extra lives are on).
+- New activities start with both enemy speed-ups off: **Speed-up per question** and
+  **Speed-up per round** default to 0 (were 5% and 30%). The column defaults change in
+  upgrade step 2026102205; existing activities keep their saved values.
+
 ## [2026102203] — Unreleased — Editable "Read it first" messages, Switch bank, Moodle 5.2+
 
 ### Added

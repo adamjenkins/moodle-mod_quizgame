@@ -252,6 +252,7 @@ final class backup_restore_test extends \advanced_testcase {
                 'speedramp' => 12,
                 'speedrampstart' => 2,
                 'speedroundjump' => 0,
+                'playwidth' => 20,
             ],
             [
                 'rewards' => 0,
@@ -272,6 +273,7 @@ final class backup_restore_test extends \advanced_testcase {
                 'speedramp' => 0,
                 'speedrampstart' => 1,
                 'speedroundjump' => 200,
+                'playwidth' => 0,
             ],
         ];
         foreach ($variants as $i => $settings) {
@@ -297,14 +299,16 @@ final class backup_restore_test extends \advanced_testcase {
             'misspenalty' => 9999999999,
             'wrongpenalties' => '1,2,x',
             'rewardbonusships' => 500,
+            'playwidth' => 999,
         ]);
 
         $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
 
         $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
         $this->assertEquals(
-            [100000, 100000, '300', 10],
-            [$restored->pointscorrect, $restored->misspenalty, $restored->wrongpenalties, $restored->rewardbonusships]
+            [100000, 100000, '300', 10, 60],
+            [$restored->pointscorrect, $restored->misspenalty, $restored->wrongpenalties, $restored->rewardbonusships,
+                $restored->playwidth]
         );
     }
 }

@@ -1657,11 +1657,12 @@ final class game_session_test extends \advanced_testcase {
             'reportmisses' => false,
             'sassy' => false,
             'startlives' => 3,
-            'speedramp' => 5,
+            'speedramp' => 0,
             'speedrampstart' => 0,
-            'speedroundjump' => 30,
+            'speedroundjump' => 0,
             'speedtarget' => 0,
             'bonusspeed' => 100,
+            'playwidth' => 0,
         ], $config);
 
         $config = $this->start_session($this->reward_settings([
@@ -1673,11 +1674,12 @@ final class game_session_test extends \advanced_testcase {
             'speedroundjump' => 0,
             'rewardbonusspeed' => 250,
             'startlives' => 5,
+            'playwidth' => 20,
         ]))->client_config();
         $this->assertEquals(
-            [true, 8000, 10, 1, 0, 250, 5],
+            [true, 8000, 10, 1, 0, 250, 5, 20],
             [$config['reportmisses'], $config['speedtarget'], $config['speedramp'], $config['speedrampstart'],
-                $config['speedroundjump'], $config['bonusspeed'], $config['startlives']]
+                $config['speedroundjump'], $config['bonusspeed'], $config['startlives'], $config['playwidth']]
         );
         // The miss-break option only matters while combos are on.
         $config = $this->start_session($this->reward_settings(['rewardmissbreak' => 1]))->client_config();

@@ -121,22 +121,25 @@ Feature: Teachers can set the rewards for good play of a quizgame
     And I expand all fieldsets
     Then the following fields match these values:
       | Starting lives            | 3                                |
-      | Speed-up per question (%) | 5                                |
-      | Speed-up starts           | Once the score target is reached |
-      | Speed-up per round (%)    | 30                               |
+      | Maximum lives             | 5                                |
+      | Speed-up per question (%) | 0                                |
+      | Speed-up per round (%)    | 0                                |
+      | Play area width           | Fill the screen (ships keep their size) |
       | Bonus ships per round     | 2                                |
       | Bonus ship speed (%)      | 100                              |
       | A miss resets the combo   | 0                                |
-    And "#id_speedrampstart" "css_element" should be visible
-    And I set the field "Speed-up per question (%)" to "0"
     And "#id_speedrampstart" "css_element" should not be visible
+    And I set the field "Speed-up per question (%)" to "5"
+    And "#id_speedrampstart" "css_element" should be visible
+    And the field "Speed-up starts" matches value "Once the score target is reached"
     And I set the following fields to these values:
       | Quizventure name          | Harder quizventure    |
       | Question category         | Test questions        |
       | Starting lives            | 4                     |
       | Speed-up per question (%) | 8                     |
       | Speed-up starts           | After the first round |
-      | Speed-up per round (%)    | 0                     |
+      | Speed-up per round (%)    | 10                    |
+      | Play area width           | 20 ships              |
       | Bonus ships per round     | 5                     |
       | Bonus ship speed (%)      | 150                   |
       | A miss resets the combo   | 1                     |
@@ -147,7 +150,8 @@ Feature: Teachers can set the rewards for good play of a quizgame
       | Starting lives            | 4                     |
       | Speed-up per question (%) | 8                     |
       | Speed-up starts           | After the first round |
-      | Speed-up per round (%)    | 0                     |
+      | Speed-up per round (%)    | 10                    |
+      | Play area width           | 20 ships              |
       | Bonus ships per round     | 5                     |
       | Bonus ship speed (%)      | 150                   |
       | A miss resets the combo   | 1                     |

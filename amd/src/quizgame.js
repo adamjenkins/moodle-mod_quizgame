@@ -70,7 +70,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
 
     // Sassy enhancements. The server decides every effect; the client only plays what it is told.
     var config = {reportmisses: false, sassy: false, startlives: 3, speedramp: 0, speedrampstart: 0, speedroundjump: 30,
-        speedtarget: 0, bonusspeed: 100, decoylabels: []};
+        speedtarget: 0, bonusspeed: 100, playwidth: 0, decoylabels: []};
+    // The width of a ship sprite in game pixels: the unit of the play area width setting.
+    var SHIP_SIZE = 32;
     var speedRampOn = false;
     var messageQueue = [];
     // When the message on screen appeared; fire presses are ignored for MESSAGE_LOCK ms after that,
@@ -493,9 +495,20 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {object} stage
      */
     function sizeScreen(stage) {
-
-        stage.width = displayRect.width;
-        stage.height = displayRect.height;
+        // Here displayRect is the canvas's size on the page. With a fixed play area width the game works
+        // in that many ships' width (and the page's proportions) and is zoomed to fill the space; the
+        // canvas keeps the page's resolution, so text stays sharp.
+        var pageWidth = displayRect.width;
+        var pageHeight = displayRect.height;
+        var zoom = 1;
+        if (config.playwidth > 0 && pageWidth > 0) {
+            zoom = pageWidth / (config.playwidth * SHIP_SIZE);
+            displayRect.width = config.playwidth * SHIP_SIZE;
+            displayRect.height = Math.round(pageHeight / zoom);
+        }
+        stage.width = pageWidth;
+        stage.height = pageHeight;
+        context.setTransform(zoom, 0, 0, zoom, 0, 0);
         context.imageSmoothingEnabled = false;
     }
 
@@ -548,10 +561,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         context.textAlign = 'center';
 
         if (questions !== null && questions.length > 0) {
-            context.fillText(M.util.get_string('spacetostart', 'mod_quizgame'), displayRect.width / 2, displayRect.height / 2);
+            context.fillText(M.util.get_string('spacetostart', 'mod_quizgame'), displayRect.width / 2, displayRect.height / 2,
+                textWidth());
             menuEvents();
         } else {
-            context.fillText(M.util.get_string('emptyquiz', 'mod_quizgame'), displayRect.width / 2, displayRect.height / 2);
+            context.fillText(M.util.get_string('emptyquiz', 'mod_quizgame'), displayRect.width / 2, displayRect.height / 2,
+                textWidth());
         }
     }
 
@@ -1047,7 +1062,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             context.textAlign = 'center';
             context.fillText(M.util.get_string('endofgame', 'mod_quizgame',
                                                Math.round(player.lastScore)),
-                                               displayRect.width / 2, displayRect.height / 2);
+                                               displayRect.width / 2, displayRect.height / 2, textWidth());
             if (boss.phase === 'ended') {
                 drawGameOver(context, displayRect);
             }
@@ -1154,7 +1169,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         context.font = "36px Audiowide";
         context.textAlign = 'center';
         context.fillText(M.util.get_string('sassy_gameover', 'mod_quizgame'), displayRect.width / 2,
-            displayRect.height / 2 - 50);
+            displayRect.height / 2 - 50, textWidth());
     }
 
     /**
@@ -1168,7 +1183,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         context.textAlign = 'center';
         context.font = "18px Audiowide";
         context.fillText(M.util.get_string('sassy_reading', 'mod_quizgame'), displayRect.width / 2,
-            displayRect.height / 2);
+            displayRect.height / 2, textWidth());
         context.font = "36px Audiowide";
         context.fillText(String(seconds), displayRect.width / 2, displayRect.height / 2 + 45);
     }
@@ -1190,7 +1205,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         if (messageUnlocked()) {
             context.fillStyle = '#FFFFFF';
             context.font = "14px Audiowide";
-            context.fillText(M.util.get_string('sassy_continue', 'mod_quizgame'), displayRect.width / 2, top + bandHeight - 15);
+            context.fillText(M.util.get_string('sassy_continue', 'mod_quizgame'), displayRect.width / 2, top + bandHeight - 15,
+                textWidth());
         }
     }
 
@@ -2420,6 +2436,22 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     }
 
     /**
+     * The widest a centred line of text may be: a long line is narrowed to fit a small play area.
+     * @return {number}
+     */
+    function textWidth() {
+        return displayRect.width * 0.95;
+    }
+
+    /**
+     * Game pixels per page pixel: more than 1 when a fixed play area width is zoomed out, less when zoomed in.
+     * @return {number}
+     */
+    function pointerScale() {
+        return stage.clientWidth ? displayRect.width / stage.clientWidth : 1;
+    }
+
+    /**
      * Helper function for mouse click (starts the player shooting if you clicked on them, moving if you didn't).
      * @param {object} e
      */
@@ -2429,13 +2461,14 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             return;
         }
         if (e.target === stage) {
-            var playerWasClicked = player.getRect().Contains({x: e.offsetX, y: e.offsetY});
+            var scale = pointerScale();
+            var playerWasClicked = player.getRect().Contains({x: e.offsetX * scale, y: e.offsetY * scale});
             if (playerWasClicked && player.alive) {
                 player.Shoot();
             }
             if (!mouseDown) {
-                player.mouse.x = e.offsetX;
-                player.mouse.y = e.offsetY;
+                player.mouse.x = e.offsetX * scale;
+                player.mouse.y = e.offsetY * scale;
                 mouseDown = true;
             }
         }
@@ -2455,8 +2488,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @param {object} e
      */
     function mousemove(e) {
-        player.mouse.x = e.offsetX;
-        player.mouse.y = e.offsetY;
+        player.mouse.x = e.offsetX * pointerScale();
+        player.mouse.y = e.offsetY * pointerScale();
     }
 
     /**
@@ -2519,8 +2552,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         var y = e.touches[0].clientY - rect.top;
 
         window.stage = stage;
-        player.mouse.x = x;
-        player.mouse.y = y;
+        player.mouse.x = x * pointerScale();
+        player.mouse.y = y * pointerScale();
 
         if (e.target === stage) {
             e.preventDefault();
@@ -2589,7 +2622,8 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             speedrampstart: number('speedrampstart', 0),
             speedroundjump: Math.max(0, number('speedroundjump', 30)),
             speedtarget: Math.max(0, number('speedtarget', 0)),
-            bonusspeed: Math.max(1, number('bonusspeed', 100))
+            bonusspeed: Math.max(1, number('bonusspeed', 100)),
+            playwidth: Math.max(0, number('playwidth', 0))
         };
         document.addEventListener('visibilitychange', visibilityChange, false);
         context = stage.getContext("2d");

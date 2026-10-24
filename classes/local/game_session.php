@@ -84,9 +84,10 @@ class game_session {
         'rewardbonusships' => 2,
         'startlives' => 3,
         'rewardbonusspeed' => 100,
-        'speedramp' => 5,
+        'speedramp' => 0,
         'speedrampstart' => 0,
-        'speedroundjump' => 30,
+        'speedroundjump' => 0,
+        'playwidth' => 0,
     ];
 
     /** @var array Allowed [minimum, maximum] of the whole-number Sassy and rewards settings (as in the settings form). */
@@ -112,6 +113,7 @@ class game_session {
         'speedramp' => [0, 50],
         'speedrampstart' => [0, 2],
         'speedroundjump' => [0, 200],
+        'playwidth' => [0, 60],
     ];
 
     /** @var stdClass The quizgame record. */
@@ -208,6 +210,7 @@ class game_session {
             // 0: no score target, so a ramp waiting for one starts after the first round instead.
             'speedtarget' => max(0, $target),
             'bonusspeed' => $this->int_setting('rewardbonusspeed'),
+            'playwidth' => $this->int_setting('playwidth'),
         ];
     }
 

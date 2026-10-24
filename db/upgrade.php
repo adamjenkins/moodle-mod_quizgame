@@ -261,6 +261,32 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026102203, 'quizgame');
     }
 
+    if ($oldversion < 2026102204) {
+        // Fixed play area width, zoomed to fit the screen (0: fill the screen, as before).
+        $table = new xmldb_table('quizgame');
+        $field = new xmldb_field('playwidth', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '0', 'speedroundjump');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026102204, 'quizgame');
+    }
+
+    if ($oldversion < 2026102205) {
+        // New activities start with both enemy speed-ups off. Only the column defaults change:
+        // existing activities keep the speed-ups they were saved with.
+        $table = new xmldb_table('quizgame');
+        $fields = [
+            new xmldb_field('speedramp', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '0', 'startlives'),
+            new xmldb_field('speedroundjump', XMLDB_TYPE_INTEGER, '4', null, XMLDB_NOTNULL, null, '0', 'speedrampstart'),
+        ];
+        foreach ($fields as $field) {
+            $dbman->change_field_default($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026102205, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }
