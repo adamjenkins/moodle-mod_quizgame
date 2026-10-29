@@ -89,7 +89,11 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
     var drainRate = 0;
     var scoreTime = 0;
     var decoyLabels = [];
+    // The boss finale endings the server can send. The scripted ones play out on their own: no input.
+    var SCRIPTED_ENDINGS = ['tow', 'selfdestruct', 'blackhole', 'pumpkin'];
+    var ENDINGS = ['big', 'swarm'].concat(SCRIPTED_ENDINGS);
     var boss = newBossState();
+    var audioContext = null;
 
     // Rewards for good play. The server decides them too; the client only shows them.
     var comboMultiplier = 1;
@@ -128,7 +132,10 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             shownScore: 0,
             drainFrom: 0,
             swarmSpawned: 0,
-            spawnClock: 0
+            spawnClock: 0,
+            lines: [],
+            props: [],
+            ending: null
         };
     }
 
@@ -231,9 +238,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             }
         });
         applyRewards(effects);
-        if (effects.boss === 'big' || effects.boss === 'swarm') {
+        if (ENDINGS.indexOf(effects.boss) !== -1) {
             boss.style = effects.boss;
             boss.swarmsize = Math.max(1, effects.swarmsize || 20);
+            boss.lines = (effects.endinglines || []).filter(function(line) {
+                return typeof line === 'string';
+            });
             var thisGame = gameId;
             whenMessagesDone(function() {
                 if (thisGame === gameId && player.alive) {
@@ -336,7 +346,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                 return null;
             }
             var effects = response.effects;
-            if (effects && boss.style === '' && (effects.boss === 'big' || effects.boss === 'swarm')) {
+            if (effects && boss.style === '' && ENDINGS.indexOf(effects.boss) !== -1) {
                 // The server has already zeroed the score; the finale drains the shown one to 0.
                 boss.shownScore = displayScore();
             }
@@ -402,6 +412,48 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
                     return null;
                 });
             }
+        }
+    }
+
+    /**
+     * Play a synthesised tone (the scripted endings' chomps, beeps and burps), if sound is on.
+     * @param {number} frequency start frequency in Hz
+     * @param {number} seconds length
+     * @param {object} options type (oscillator wave), slideTo (end frequency in Hz), volume (0 to 1)
+     */
+    function playTone(frequency, seconds, options) {
+        var soundOn = document.getElementById("mod_quizgame_sound_on");
+        var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!soundOn || !soundOn.checked || !AudioContextClass) {
+            return;
+        }
+        options = options || {};
+        try {
+            if (!audioContext) {
+                audioContext = new AudioContextClass();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().catch(function() {
+                    return null;
+                });
+            }
+            var now = audioContext.currentTime;
+            var oscillator = audioContext.createOscillator();
+            var gain = audioContext.createGain();
+            oscillator.type = options.type || 'square';
+            oscillator.frequency.setValueAtTime(frequency, now);
+            if (options.slideTo) {
+                oscillator.frequency.exponentialRampToValueAtTime(options.slideTo, now + seconds);
+            }
+            gain.gain.setValueAtTime(options.volume || 0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + seconds);
+            oscillator.connect(gain);
+            gain.connect(audioContext.destination);
+            oscillator.start(now);
+            oscillator.stop(now + seconds);
+        } catch (error) {
+            // No audio in this browser: the ending plays silently.
+            audioContext = null;
         }
     }
 
@@ -938,7 +990,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @return {boolean}
      */
     function canFire() {
-        return player.alive && !isPaused() && !isReading();
+        return player.alive && !isPaused() && !isReading() && !endingRunning();
     }
 
     /**
@@ -951,13 +1003,17 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         boss.started = true;
         boss.phase = 'play';
         boss.clock = 0;
-        killAllAlive();
-        cancelBonusRound();
         readingUntil = 0;
         pendingSpawn = null;
         levelDodge = false;
         levelReversed = false;
         question = '';
+        if (isScriptedEnding()) {
+            startEnding(displayRect);
+            return;
+        }
+        killAllAlive();
+        cancelBonusRound();
         if (boss.style === 'big') {
             var ship = new BossShip(displayRect);
             gameObjects.push(ship);
@@ -969,7 +1025,7 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
      * @return {boolean}
      */
     function bossSequenceRunning() {
-        return boss.started && (boss.phase === 'drain' || boss.phase === 'gameover');
+        return boss.started && (boss.phase === 'drain' || boss.phase === 'gameover' || endingRunning());
     }
 
     /**
@@ -993,7 +1049,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             return;
         }
         boss.clock++;
-        if (boss.phase === 'play' && boss.style === 'swarm') {
+        if (endingRunning()) {
+            updateEnding(bounds);
+        } else if (boss.phase === 'play' && boss.style === 'swarm') {
             // Keep the swarm full: ships pour in one after another, and each one shot is replaced.
             var alive = gameObjects.filter(function(object) {
                 return object instanceof SwarmEnemy && object.alive;
@@ -1018,6 +1076,874 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
         }
     }
 
+    // Scripted boss finale endings: the tow truck, self-destruct, the black hole and the jack-o'-lantern.
+    // Each runs on boss.clock (25 frames a second) with no player input, then shows score 0 and GAME OVER.
+    // The server set the score to 0 when the finale started; these only show it going.
+
+    /**
+     * Whether the boss finale is one of the scripted endings.
+     * @return {boolean}
+     */
+    function isScriptedEnding() {
+        return SCRIPTED_ENDINGS.indexOf(boss.style) !== -1;
+    }
+
+    /**
+     * Whether a scripted ending is playing (before its GAME OVER).
+     * @return {boolean}
+     */
+    function endingRunning() {
+        return boss.started && boss.phase === 'play' && isScriptedEnding();
+    }
+
+    /**
+     * Ease in and out between 0 and 1.
+     * @param {number} t progress, clamped to 0..1
+     * @return {number}
+     */
+    function ease(t) {
+        t = Math.max(0, Math.min(1, t));
+        return t * t * (3 - 2 * t);
+    }
+
+    /**
+     * Progress from 0 to 1 of the frames from start to start + length.
+     * @param {number} start frame
+     * @param {number} length frames
+     * @return {number}
+     */
+    function progress(start, length) {
+        return Math.max(0, Math.min(1, (boss.clock - start) / length));
+    }
+
+    /**
+     * The width of a sprite, or the ship size if its image has not loaded.
+     * @param {object} object game object
+     * @return {number}
+     */
+    function spriteWidth(object) {
+        return (object.image && object.image.width) || object.width || SHIP_SIZE;
+    }
+
+    /**
+     * The height of a sprite, or the ship size if its image has not loaded.
+     * @param {object} object game object
+     * @return {number}
+     */
+    function spriteHeight(object) {
+        return (object.image && object.image.height) || object.height || SHIP_SIZE;
+    }
+
+    /**
+     * Freeze the game for a scripted ending: every ship and shot left becomes a prop the ending moves.
+     * @param {object} bounds
+     */
+    function startEnding(bounds) {
+        boss.props = [];
+        gameObjects.forEach(function(object) {
+            if (object !== player && object.alive) {
+                boss.props.push({object: object, x: object.x, y: object.y, vx: 0, vy: 0, scale: 1, angle: 0, alpha: 1,
+                    done: false});
+            }
+        });
+        gameObjects = [player];
+        currentTeam = [];
+        selectedMatch = null;
+        bonusRound = newBonusState();
+        player.hidden = true;
+        player.direction = {x: 0, y: 0};
+        player.velocity = {x: 0, y: 0};
+
+        var text = String(Math.round(boss.shownScore));
+        var ending = {
+            text: text,
+            ship: {x: player.x, y: player.y, scale: 1, angle: 0, visible: true},
+            lines: boss.lines
+        };
+        context.font = "18px Audiowide";
+        ending.hudWidths = prefixWidths(text);
+        // Where the number starts in the score line: the endings take it from there.
+        ending.numberX = 5 + context.measureText(hudParts(player.lives).prefix).width;
+        if (boss.style === 'pumpkin') {
+            ending.home = {x: bounds.width / 2, y: bounds.height * 0.4};
+            ending.pumpkin = {x: ending.home.x, y: ending.home.y, scale: 0, mouth: 0};
+            ending.radius = Math.max(48, Math.min(bounds.width, bounds.height) * 0.16);
+            ending.eatAt = 115;
+            ending.endAt = ending.lines.length > 1 && ending.lines[1] !== '' ? 200 : 150;
+        } else if (boss.style === 'tow') {
+            ending.park = {x: bounds.width * 0.55, y: bounds.height * 0.6};
+            ending.truck = {x: -120, y: 0};
+            ending.dragSpeed = 0;
+            ending.score = {x: ending.numberX, y: bounds.height - 20};
+            boss.props.forEach(function(prop) {
+                prop.vx = (prop.x + spriteWidth(prop.object) / 2 < bounds.width / 2 ? -1 : 1) * (0.5 + Math.random());
+                prop.vy = -0.5 - Math.random();
+            });
+        } else if (boss.style === 'selfdestruct') {
+            ending.followUp = ending.lines.length > 1 && ending.lines[1] !== '';
+            ending.puffAt = 120;
+            ending.followUpAt = 140;
+            ending.endAt = ending.followUp ? 205 : 150;
+        } else if (boss.style === 'blackhole') {
+            ending.centre = {x: bounds.width / 2, y: bounds.height / 2};
+            ending.radius = 0;
+            ending.maxRadius = Math.max(18, Math.min(bounds.width, bounds.height) * 0.09);
+            boss.props.forEach(function(prop, index) {
+                var start = 15 + Math.min(index, 10) * 3;
+                pullFrom(prop, ending.centre, start, 40, spriteWidth(prop.object), spriteHeight(prop.object));
+            });
+            pullFrom(ending.ship, ending.centre, 60, 50, spriteWidth(player), spriteHeight(player));
+            ending.digits = text.split('').map(function(digit, index) {
+                var item = {text: digit, x: ending.numberX + ending.hudWidths[index], y: bounds.height - 20, scale: 1,
+                    angle: 0};
+                // Text is drawn from its baseline: aim the digit's middle at the hole.
+                pullFrom(item, ending.centre, 105 + index * 6, 35, 10, -12);
+                return item;
+            });
+        }
+        boss.ending = ending;
+    }
+
+    /**
+     * The widths of every prefix of a text in the current font: widths[i] is the width of its first i characters.
+     * @param {string} text
+     * @return {number[]}
+     */
+    function prefixWidths(text) {
+        var widths = [];
+        for (var i = 0; i <= text.length; i++) {
+            widths.push(context.measureText(text.substring(0, i)).width);
+        }
+        return widths;
+    }
+
+    /**
+     * Set up an item (a prop, the ship, a digit) to spiral into the black hole.
+     * @param {object} item with x and y, its top left
+     * @param {object} centre the black hole
+     * @param {number} start frame the pull starts
+     * @param {number} length frames to fall in
+     * @param {number} width of the item, so its middle ends in the hole
+     * @param {number} height of the item
+     */
+    function pullFrom(item, centre, start, length, width, height) {
+        var target = {x: centre.x - width / 2, y: centre.y - height / 2};
+        var dx = item.x - target.x;
+        var dy = item.y - target.y;
+        item.pull = {start: start, length: length, target: target, radius: Math.sqrt(dx * dx + dy * dy),
+            angle: Math.atan2(dy, dx)};
+    }
+
+    /**
+     * Move an item along its spiral into the black hole.
+     * @param {object} item set up by pullFrom()
+     * @param {number} spin extra turns of the item itself
+     */
+    function spiralIn(item, spin) {
+        var centre = item.pull.target;
+        var t = progress(item.pull.start, item.pull.length);
+        if (t <= 0) {
+            return;
+        }
+        var radius = item.pull.radius * Math.pow(1 - t, 1.6);
+        var angle = item.pull.angle + t * 4;
+        item.x = centre.x + radius * Math.cos(angle);
+        item.y = centre.y + radius * Math.sin(angle);
+        item.scale = Math.max(0.02, 1 - t);
+        item.angle = t * spin * Math.PI * 2;
+        item.done = t >= 1;
+    }
+
+    /**
+     * Run a scripted ending one frame on.
+     * @param {object} bounds
+     */
+    function updateEnding(bounds) {
+        var steps = {tow: updateTow, selfdestruct: updateSelfDestruct, blackhole: updateBlackHole, pumpkin: updatePumpkin};
+        if (steps[boss.style](boss.ending, boss.clock, bounds)) {
+            finishEnding();
+        }
+    }
+
+    /**
+     * One frame of the jack-o'-lantern: it pops up, laughs, swoops down on the ship, eats it and chews.
+     * @param {object} ending
+     * @param {number} clock frame
+     * @return {boolean} whether the ending has finished
+     */
+    function updatePumpkin(ending, clock) {
+        boss.props.forEach(function(prop) {
+            prop.alpha = 1 - progress(0, 20);
+        });
+        var pumpkin = ending.pumpkin;
+        var home = ending.home;
+        var shipX = player.x + spriteWidth(player) / 2;
+        var shipY = player.y + spriteHeight(player) / 2;
+        pumpkin.scale = ease(progress(0, 20));
+        if (clock === 1) {
+            playTone(140, 0.35, {type: 'triangle', slideTo: 320, volume: 0.12});
+        }
+        if (clock < 85) {
+            // Laugh: bounce, mouth flapping, one "ha" after another, each a little lower.
+            pumpkin.x = home.x;
+            pumpkin.y = home.y - Math.abs(Math.sin(clock / 3)) * 8 * progress(20, 5);
+            pumpkin.mouth = clock >= 25 ? 0.3 + 0.7 * (Math.floor(clock / 3) % 2) : 0.3;
+            if (clock >= 25 && clock <= 55 && (clock - 25) % 6 === 0) {
+                playTone(560 - (clock - 25) * 6, 0.12, {type: 'sawtooth', slideTo: 300 - (clock - 25) * 3, volume: 0.09});
+            }
+        } else if (clock < ending.eatAt) {
+            // Swoop down with its mouth wide open.
+            var t = ease(progress(85, ending.eatAt - 85));
+            pumpkin.x = home.x + (shipX - home.x) * t;
+            pumpkin.y = home.y + (shipY - home.y) * t;
+            pumpkin.mouth = 1;
+        } else {
+            if (clock === ending.eatAt) {
+                ending.ship.visible = false;
+                spray(shipX, shipY, 25, "#FF9900");
+                playTone(220, 0.15, {type: 'square', slideTo: 80, volume: 0.15});
+            }
+            // Chew, then drift back up looking pleased.
+            var chewing = clock < ending.eatAt + 25;
+            pumpkin.mouth = chewing ? 0.5 * (Math.floor(clock / 2) % 2) : 0.15;
+            if (chewing && clock % 4 === 0) {
+                playTone(150, 0.06, {type: 'square', volume: 0.08});
+            }
+            var back = ease(progress(ending.eatAt + 25, 25));
+            pumpkin.x = shipX + (home.x - shipX) * back;
+            pumpkin.y = shipY + (home.y - shipY) * back;
+        }
+        return clock >= ending.endAt;
+    }
+
+    /**
+     * One frame of the tow truck.
+     * @param {object} ending
+     * @param {number} clock frame
+     * @param {object} bounds
+     * @return {boolean} whether the ending has finished
+     */
+    function updateTow(ending, clock, bounds) {
+        boss.props.forEach(function(prop) {
+            prop.x += prop.vx;
+            prop.y += prop.vy;
+            prop.vx *= 1.06;
+            prop.vy *= 1.06;
+        });
+        var ship = ending.ship;
+        var park = ending.park;
+        var truck = ending.truck;
+        if (clock <= 135) {
+            var parkT = ease(progress(0, 30));
+            var hitchX = park.x - 40;
+            ship.x = player.x + (park.x - player.x) * parkT;
+            ship.y = player.y + (park.y - player.y) * parkT;
+            // Reverse in from the left, beeping.
+            truck.x = -120 + (hitchX - 70 + 120) * ease(progress(20, 40));
+            truck.y = park.y - 6;
+            if (clock >= 20 && clock < 60 && clock % 8 === 0) {
+                playTone(1050, 0.07, {type: 'square', volume: 0.08});
+            }
+            if (clock === 75) {
+                playTone(180, 0.12, {type: 'square', slideTo: 90});
+            }
+        } else {
+            ending.dragSpeed += 0.45;
+            truck.x -= ending.dragSpeed;
+            ship.x = truck.x + 70 + 40;
+        }
+        // The score is lifted on to a rope behind the ship, then towed along.
+        var scoreT = ease(progress(115, 20));
+        var behind = {x: ship.x + spriteWidth(player) + 40, y: ship.y + spriteHeight(player) / 2 + 6};
+        var fromY = bounds.height - 20;
+        ending.score.x = ending.numberX + (behind.x - ending.numberX) * scoreT;
+        ending.score.y = fromY + (behind.y - fromY) * scoreT;
+        if (clock > 260) {
+            return true;
+        }
+        return clock > 135 && ending.score.x + ending.hudWidths[ending.text.length] < -10;
+    }
+
+    /**
+     * One frame of self-destruct.
+     * @param {object} ending
+     * @param {number} clock frame
+     * @return {boolean} whether the ending has finished
+     */
+    function updateSelfDestruct(ending, clock) {
+        var shake = 4 * progress(40, 75);
+        ending.ship.x = player.x + (Math.random() - 0.5) * 2 * shake;
+        ending.ship.y = player.y + (Math.random() - 0.5) * 2 * shake;
+        if (clock === 40 || clock === 65 || clock === 90) {
+            playTone(880, 0.18, {type: 'square', volume: 0.1});
+        }
+        if (clock === ending.puffAt) {
+            ending.ship.visible = false;
+            spray(player.x + spriteWidth(player) / 2, player.y + spriteHeight(player) / 2, 6, "#999999");
+            playTone(320, 0.6, {type: 'triangle', slideTo: 110, volume: 0.1});
+        }
+        if (clock > ending.followUpAt) {
+            boss.props.forEach(function(prop) {
+                prop.alpha = Math.max(0, prop.alpha - 0.05);
+            });
+        }
+        return clock >= ending.endAt;
+    }
+
+    /**
+     * One frame of the black hole.
+     * @param {object} ending
+     * @param {number} clock frame
+     * @return {boolean} whether the ending has finished
+     */
+    function updateBlackHole(ending, clock) {
+        if (clock < 210) {
+            ending.radius = ending.maxRadius * ease(progress(0, 30));
+        } else {
+            ending.radius = ending.maxRadius * (1 - ease(progress(210, 20)));
+        }
+        if (clock === 1) {
+            playTone(60, 1.6, {type: 'sawtooth', slideTo: 35, volume: 0.1});
+        }
+        if (clock === 60) {
+            playTone(500, 0.9, {type: 'sine', slideTo: 60, volume: 0.12});
+        }
+        boss.props.forEach(function(prop) {
+            spiralIn(prop, 1);
+        });
+        spiralIn(ending.ship, 3);
+        ending.digits.forEach(function(digit) {
+            spiralIn(digit, 0);
+        });
+        return clock >= 230;
+    }
+
+    /**
+     * End a scripted ending: no ship, score 0, and the usual GAME OVER.
+     */
+    function finishEnding() {
+        player.alive = false;
+        player.lastScore = 0;
+        boss.props = [];
+        boss.shownScore = 0;
+        boss.phase = 'gameover';
+        boss.clock = 0;
+        score = 0;
+        drainRate = 0;
+    }
+
+    /**
+     * Draw a prop: a ship or shot of the frozen game, moved, scaled, turned and faded by the ending.
+     * @param {object} context
+     * @param {object} prop
+     */
+    function drawProp(context, prop) {
+        if (prop.done || prop.alpha <= 0) {
+            return;
+        }
+        var object = prop.object;
+        var cx = prop.x + spriteWidth(object) / 2;
+        var cy = prop.y + spriteHeight(object) / 2;
+        context.save();
+        context.globalAlpha = prop.alpha;
+        context.translate(cx, cy);
+        context.rotate(prop.angle);
+        context.scale(prop.scale, prop.scale);
+        context.translate(-cx, -cy);
+        object.x = prop.x;
+        object.y = prop.y;
+        object.draw(context);
+        context.restore();
+    }
+
+    /**
+     * Draw the player's ship as the ending moves it.
+     * @param {object} context
+     */
+    function drawEndingShip(context) {
+        var ship = boss.ending.ship;
+        if (!ship.visible || ship.done) {
+            return;
+        }
+        var w = spriteWidth(player);
+        var h = spriteHeight(player);
+        context.save();
+        context.translate(ship.x + w / 2, ship.y + h / 2);
+        context.rotate(ship.angle);
+        context.scale(ship.scale, ship.scale);
+        context.drawImage(player.image, -w / 2, -h / 2, w, h);
+        context.restore();
+    }
+
+    /**
+     * Draw the usual score and lives line, with the score as the ending shows it.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {number} value score to show
+     * @param {number} lives lives to show
+     */
+    function drawEndingHud(context, displayRect, value, lives) {
+        context.fillStyle = '#FFFFFF';
+        context.font = "18px Audiowide";
+        context.textAlign = 'left';
+        context.fillText(M.util.get_string('score', 'mod_quizgame', {score: value, lives: lives}), 5, displayRect.height - 20);
+    }
+
+    /**
+     * The score line around its number: the text before and after it.
+     * @param {number} lives lives to show
+     * @return {object} prefix and suffix
+     */
+    function hudParts(lives) {
+        var marker = '\u0001';
+        var line = M.util.get_string('score', 'mod_quizgame', {score: marker, lives: lives});
+        var at = line.indexOf(marker);
+        if (at === -1) {
+            return {prefix: line, suffix: ''};
+        }
+        return {prefix: line.substring(0, at), suffix: line.substring(at + marker.length)};
+    }
+
+    /**
+     * Draw the score line with a gap where the number was, so the number's digits can leave it one by one.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {string} text the number the gap is for
+     * @param {number} lives lives to show
+     */
+    function drawEndingHudGap(context, displayRect, text, lives) {
+        var parts = hudParts(lives);
+        context.fillStyle = '#FFFFFF';
+        context.font = "18px Audiowide";
+        context.textAlign = 'left';
+        var y = displayRect.height - 20;
+        context.fillText(parts.prefix, 5, y);
+        context.fillText(parts.suffix, 5 + context.measureText(parts.prefix + text).width, y);
+    }
+
+    /**
+     * Draw a line of ending text, wrapped, centred at a height.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {string} line
+     * @param {number} y top of the text
+     * @param {string} colour
+     * @param {number} size font size in pixels
+     */
+    function drawEndingLine(context, displayRect, line, y, colour, size) {
+        if (!line) {
+            return;
+        }
+        context.fillStyle = colour;
+        context.font = size + "px Audiowide";
+        context.textAlign = 'center';
+        wrapText(context, line, false, size + 4, displayRect.width * 0.85, displayRect.width / 2, y);
+    }
+
+    /**
+     * Draw the scripted ending's frame (over the stars and particles).
+     * @param {object} context
+     * @param {object} displayRect
+     */
+    function drawEnding(context, displayRect) {
+        var ending = boss.ending;
+        if (!ending) {
+            return;
+        }
+        if (boss.style !== 'blackhole') {
+            boss.props.forEach(function(prop) {
+                drawProp(context, prop);
+            });
+        }
+        if (boss.style === 'pumpkin') {
+            drawPumpkinEnding(context, displayRect, ending);
+        } else if (boss.style === 'tow') {
+            drawTow(context, displayRect, ending);
+        } else if (boss.style === 'selfdestruct') {
+            drawSelfDestruct(context, displayRect, ending);
+        } else if (boss.style === 'blackhole') {
+            drawBlackHole(context, displayRect, ending);
+        }
+    }
+
+    /**
+     * The jack-o'-lantern: it laughs at the player in the middle of the screen, then eats the ship.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {object} ending
+     */
+    function drawPumpkinEnding(context, displayRect, ending) {
+        var clock = boss.clock;
+        var eaten = clock >= ending.eatAt;
+        drawEndingShip(context);
+        drawEndingHud(context, displayRect, eaten ? 0 : ending.text, eaten ? 0 : player.lives);
+        var pumpkin = ending.pumpkin;
+        drawPumpkin(context, pumpkin.x, pumpkin.y, ending.radius * pumpkin.scale, pumpkin.mouth);
+        if (clock >= 25 && clock < 85) {
+            drawEndingSpeech(context, ending.lines[0], pumpkin.x, pumpkin.y - ending.radius * 1.2 - 8);
+        }
+        if (eaten && clock >= ending.eatAt + 30 && ending.lines.length > 1) {
+            drawEndingLine(context, displayRect, ending.lines[1], ending.home.y + ending.radius + 10, '#FFFFFF', 20);
+        }
+    }
+
+    /**
+     * Draw a jack-o'-lantern: a ribbed pumpkin with a stem and a carved face lit from inside.
+     * @param {object} context
+     * @param {number} x centre
+     * @param {number} y centre
+     * @param {number} r radius
+     * @param {number} mouth how far the mouth is open, 0 to 1
+     */
+    function drawPumpkin(context, x, y, r, mouth) {
+        if (r <= 0.5) {
+            return;
+        }
+        context.save();
+        // Stem.
+        context.fillStyle = '#3A7D1E';
+        context.fillRect(x - r * 0.1, y - r * 1.05, r * 0.2, r * 0.3);
+        // Body: overlapping lobes, the outer ones darker.
+        [[-0.45, 0.75, '#D9560B'], [0.45, 0.75, '#D9560B'], [0, 0.7, '#FF7518']].forEach(function(lobe) {
+            context.fillStyle = lobe[2];
+            context.beginPath();
+            context.ellipse(x + lobe[0] * r, y, r * lobe[1], r * 0.85, 0, 0, Math.PI * 2);
+            context.fill();
+        });
+        // Dark carved holes, with a faint flicker of the candle inside.
+        context.fillStyle = Math.random() < 0.2 ? '#4A1C00' : '#2A0D00';
+        // Eyes and nose.
+        [[-1, 1], [1, -1]].forEach(function(side) {
+            var ex = x + side[0] * r * 0.38;
+            context.beginPath();
+            context.moveTo(ex - r * 0.18, y - r * 0.1);
+            context.lineTo(ex + r * 0.18, y - r * 0.1);
+            context.lineTo(ex + side[1] * r * 0.08, y - r * 0.42);
+            context.closePath();
+            context.fill();
+        });
+        context.beginPath();
+        context.moveTo(x - r * 0.08, y + r * 0.08);
+        context.lineTo(x + r * 0.08, y + r * 0.08);
+        context.lineTo(x, y - r * 0.08);
+        context.closePath();
+        context.fill();
+        // A jagged grin that opens wide.
+        var top = y + r * 0.22;
+        var depth = r * (0.12 + 0.4 * mouth);
+        var half = r * 0.55;
+        var teeth = 4;
+        context.beginPath();
+        context.moveTo(x - half, top);
+        for (var i = 0; i <= teeth * 2; i++) {
+            var tx = x - half + (2 * half) * i / (teeth * 2);
+            context.lineTo(tx, top + (i % 2 ? r * 0.09 : 0));
+        }
+        context.quadraticCurveTo(x, top + depth * 2, x - half, top);
+        context.closePath();
+        context.fill();
+        context.restore();
+    }
+
+    /**
+     * Draw a short line of text above a point, in a speech bubble.
+     * @param {object} context
+     * @param {string} line
+     * @param {number} x centre
+     * @param {number} y bottom of the bubble
+     */
+    function drawEndingSpeech(context, line, x, y) {
+        if (!line) {
+            return;
+        }
+        context.font = "16px Audiowide";
+        context.textAlign = 'center';
+        var width = Math.min(context.measureText(line).width, textWidth() - 20) + 16;
+        var left = Math.max(4, Math.min(displayRect.width - width - 4, x - width / 2));
+        context.fillStyle = '#FFFFFF';
+        context.fillRect(left, y - 26, width, 24);
+        context.fillStyle = '#000000';
+        context.fillText(line, left + width / 2, y - 8, width - 12);
+    }
+
+    /**
+     * The tow truck: it reverses in, hooks the ship, puts up its sign and drags ship and score away.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {object} ending
+     */
+    function drawTow(context, displayRect, ending) {
+        var truck = ending.truck;
+        var ship = ending.ship;
+        var w = spriteWidth(player);
+        var h = spriteHeight(player);
+        var rear = {x: truck.x + 70, y: truck.y + 4};
+        var hook = {x: ship.x, y: ship.y + h / 2};
+
+        // The hook cable, let out between frames 60 and 75.
+        var cable = progress(60, 15);
+        if (cable > 0) {
+            context.strokeStyle = '#CCCCCC';
+            context.lineWidth = 2;
+            context.beginPath();
+            context.moveTo(rear.x, rear.y);
+            context.lineTo(rear.x + (hook.x - rear.x) * cable, rear.y + (hook.y - rear.y) * cable);
+            context.stroke();
+        }
+        drawEndingShip(context);
+
+        // The score: in its corner, then lifted on a rope behind the ship.
+        var lifted = boss.clock >= 115;
+        if (lifted) {
+            context.strokeStyle = '#CCCCCC';
+            context.lineWidth = 1;
+            context.beginPath();
+            context.moveTo(ship.x + w, ship.y + h / 2);
+            context.lineTo(ending.score.x, ending.score.y - 6);
+            context.stroke();
+            drawEndingHudGap(context, displayRect, ending.text, player.lives);
+        } else {
+            drawEndingHud(context, displayRect, ending.text, player.lives);
+        }
+        if (lifted) {
+            context.fillStyle = '#FFFFFF';
+            context.font = "18px Audiowide";
+            context.textAlign = 'left';
+            context.fillText(ending.text, ending.score.x, ending.score.y);
+        }
+
+        drawTruck(context, truck.x, truck.y);
+
+        // The sign pops up on the truck's roof at frame 75.
+        var sign = progress(75, 6);
+        if (sign > 0 && ending.lines[0]) {
+            var signWidth = Math.min(200, displayRect.width * 0.6);
+            if (ending.signOffset === undefined) {
+                // Kept on screen where it goes up, then carried off with the truck.
+                ending.signOffset = Math.max(4, truck.x + 35 - signWidth / 2) - truck.x;
+            }
+            var signX = truck.x + ending.signOffset;
+            var signBottom = truck.y - 22;
+            context.save();
+            context.translate(signX + signWidth / 2, signBottom);
+            context.scale(sign, sign);
+            context.font = "13px Audiowide";
+            var lines = signLines(context, ending.lines[0], signWidth - 14);
+            var signHeight = lines.length * 16 + 12;
+            context.strokeStyle = '#999999';
+            context.lineWidth = 2;
+            context.beginPath();
+            context.moveTo(0, 0);
+            context.lineTo(0, 20);
+            context.stroke();
+            context.fillStyle = '#FFFFFF';
+            context.fillRect(-signWidth / 2, -signHeight, signWidth, signHeight);
+            context.strokeStyle = '#D00000';
+            context.lineWidth = 3;
+            context.strokeRect(-signWidth / 2, -signHeight, signWidth, signHeight);
+            context.fillStyle = '#000000';
+            context.textAlign = 'center';
+            lines.forEach(function(line, index) {
+                context.fillText(line, 0, -signHeight + 18 + index * 16);
+            });
+            context.restore();
+        }
+    }
+
+    /**
+     * Split a text into lines that fit a width in the current font.
+     * @param {object} context
+     * @param {string} text
+     * @param {number} width
+     * @return {string[]}
+     */
+    function signLines(context, text, width) {
+        var lines = [];
+        var line = '';
+        text.split(' ').forEach(function(word) {
+            var test = line === '' ? word : line + ' ' + word;
+            if (line !== '' && context.measureText(test).width > width) {
+                lines.push(line);
+                line = word;
+            } else {
+                line = test;
+            }
+        });
+        lines.push(line);
+        return lines;
+    }
+
+    /**
+     * Draw the space tow truck, 70 by 30, facing left: cab on the left, the boom and hook at the back.
+     * @param {object} context
+     * @param {number} x left
+     * @param {number} y top of the body
+     */
+    function drawTruck(context, x, y) {
+        // Thruster flame under the bed.
+        context.fillStyle = Math.floor(boss.clock / 2) % 2 ? '#FF9900' : '#FFDD33';
+        context.beginPath();
+        context.moveTo(x + 30, y + 26);
+        context.lineTo(x + 50, y + 26);
+        context.lineTo(x + 40, y + 34 + Math.random() * 6);
+        context.closePath();
+        context.fill();
+        // Bed and cab.
+        context.fillStyle = '#FFB000';
+        context.fillRect(x + 22, y + 8, 46, 16);
+        context.fillRect(x, y, 26, 24);
+        context.fillStyle = '#222222';
+        context.fillRect(x + 22, y + 14, 46, 3);
+        context.fillStyle = '#66CCFF';
+        context.fillRect(x + 3, y + 3, 12, 9);
+        // Boom up to the hook pulley.
+        context.strokeStyle = '#888888';
+        context.lineWidth = 3;
+        context.beginPath();
+        context.moveTo(x + 40, y + 8);
+        context.lineTo(x + 70, y + 4);
+        context.stroke();
+        // Flashing beacon on the cab roof.
+        context.fillStyle = Math.floor(boss.clock / 4) % 2 ? '#FF2200' : '#FF9900';
+        context.fillRect(x + 9, y - 5, 8, 5);
+    }
+
+    /**
+     * Self-destruct: red alert, a warning, 3 2 1, and a sad little puff of smoke.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {object} ending
+     */
+    function drawSelfDestruct(context, displayRect, ending) {
+        var clock = boss.clock;
+        var popped = clock >= ending.puffAt;
+        drawEndingShip(context);
+        drawEndingHud(context, displayRect, popped ? 0 : ending.text, popped ? 0 : player.lives);
+        if (popped) {
+            // The puff: a few grey rings growing and fading.
+            var t = progress(ending.puffAt, 30);
+            if (t < 1) {
+                context.save();
+                context.globalAlpha = 1 - t;
+                context.fillStyle = '#888888';
+                var cx = player.x + spriteWidth(player) / 2;
+                var cy = player.y + spriteHeight(player) / 2 - t * 12;
+                [[0, 0], [-5, 3], [5, 2]].forEach(function(offset) {
+                    context.beginPath();
+                    context.arc(cx + offset[0] * (1 + t), cy + offset[1], 3 + t * 6, 0, Math.PI * 2);
+                    context.fill();
+                });
+                context.restore();
+            }
+            if (ending.followUp && clock >= ending.followUpAt) {
+                drawEndingLine(context, displayRect, ending.lines[1], displayRect.height / 2 - 40, '#FFFFFF', 20);
+            }
+            return;
+        }
+        // Red alert.
+        context.save();
+        context.globalAlpha = 0.15 + 0.2 * (0.5 + 0.5 * Math.sin(clock * 0.5));
+        context.fillStyle = '#FF0000';
+        context.fillRect(0, 0, displayRect.width, displayRect.height);
+        context.restore();
+        if (clock >= 10) {
+            drawEndingLine(context, displayRect, ending.lines[0], displayRect.height * 0.15, '#FFDDDD', 20);
+        }
+        if (clock >= 40) {
+            var count = 3 - Math.floor((clock - 40) / 25);
+            if (count >= 1) {
+                var pop = progress(40 + (3 - count) * 25, 6);
+                context.save();
+                context.translate(displayRect.width / 2, displayRect.height / 2 + 20);
+                context.scale(0.6 + 0.4 * pop, 0.6 + 0.4 * pop);
+                context.fillStyle = '#FFFFFF';
+                context.font = "80px Audiowide";
+                context.textAlign = 'center';
+                context.fillText(String(count), 0, 0);
+                context.restore();
+            }
+        }
+    }
+
+    /**
+     * The black hole: it opens, swallows the ships and shots, then the player's ship, then the score digit by digit.
+     * @param {object} context
+     * @param {object} displayRect
+     * @param {object} ending
+     */
+    function drawBlackHole(context, displayRect, ending) {
+        var centre = ending.centre;
+        var clock = boss.clock;
+        var radius = ending.radius;
+        // The swirling disc around the hole.
+        var colours = ['#7A2BFF', '#FF6A00', '#FFCC00', '#FF2BD6'];
+        context.save();
+        context.lineWidth = 3;
+        colours.forEach(function(colour, ring) {
+            context.strokeStyle = colour;
+            var ringRadius = radius * (1.25 + ring * 0.28);
+            for (var arc = 0; arc < 3; arc++) {
+                var start = clock * 0.18 * (1 + ring * 0.25) + arc * Math.PI * 2 / 3;
+                context.beginPath();
+                context.arc(centre.x, centre.y, ringRadius, start, start + 1.3);
+                context.stroke();
+            }
+        });
+        context.fillStyle = '#000000';
+        context.beginPath();
+        context.arc(centre.x, centre.y, radius, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = 'rgba(255, 200, 120, 0.8)';
+        context.lineWidth = 1.5;
+        context.stroke();
+        context.restore();
+
+        boss.props.forEach(function(prop) {
+            drawProp(context, prop);
+        });
+        drawEndingShip(context);
+
+        // The score's digits stretch towards the hole as they fall in.
+        var lives = clock >= ending.ship.pull.start + ending.ship.pull.length ? 0 : player.lives;
+        drawEndingHudGap(context, displayRect, ending.text, lives);
+        context.fillStyle = '#FFFFFF';
+        context.font = "18px Audiowide";
+        context.textAlign = 'left';
+        ending.digits.forEach(function(digit) {
+            if (digit.done) {
+                return;
+            }
+            var t = progress(digit.pull.start, digit.pull.length);
+            var toward = Math.atan2(centre.y - digit.y, centre.x - digit.x);
+            context.save();
+            context.translate(digit.x, digit.y);
+            context.rotate(toward);
+            context.scale(digit.scale * (1 + 2.5 * t), digit.scale * (1 - 0.6 * t));
+            context.rotate(-toward);
+            context.fillText(digit.text, 0, 0);
+            context.restore();
+        });
+
+        if (clock >= 100) {
+            drawEndingLine(context, displayRect, ending.lines[0], displayRect.height * 0.75, '#FFFFFF', 18);
+        }
+        if (clock >= 150) {
+            // GAME OVER drifts towards the hole too, but stays readable.
+            var drift = ease(progress(150, 80));
+            var y = displayRect.height * 0.2 + (centre.y - displayRect.height * 0.2) * 0.35 * drift;
+            context.save();
+            context.globalAlpha = progress(150, 10);
+            context.translate(displayRect.width / 2, y);
+            context.rotate(Math.sin(clock / 9) * 0.08 * drift);
+            context.scale(1 - 0.15 * drift, 1 - 0.15 * drift);
+            context.fillStyle = '#FF3333';
+            context.font = "36px Audiowide";
+            context.textAlign = 'center';
+            context.fillText(M.util.get_string('sassy_gameover', 'mod_quizgame'), 0, 0, textWidth());
+            context.restore();
+        }
+    }
+
     /**
      * Helper function to place text on screen
      * @param {object} context
@@ -1037,7 +1963,9 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             objects[i].draw(context);
         }
 
-        if (player.alive || bossSequenceRunning()) {
+        if (endingRunning()) {
+            drawEnding(context, displayRect);
+        } else if (player.alive || bossSequenceRunning()) {
             context.fillStyle = '#FFFFFF';
             context.font = "18px Audiowide";
             context.textAlign = 'left';
@@ -1352,6 +2280,12 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
 
     Player.prototype = Object.create(GameObject.prototype);
     Player.prototype.update = function(bounds) {
+        if (endingRunning()) {
+            // A scripted ending moves the ship itself; the player's input does nothing.
+            this.direction = {x: 0, y: 0};
+            this.velocity = {x: 0, y: 0};
+            return;
+        }
         if (mouseDown || touchDown) {
             // Reversed controls swap left and right for pointer steering too.
             var steer = levelReversed ? -1 : 1;
@@ -1380,6 +2314,13 @@ define(['jquery', 'core/notification', 'core/ajax'], function($, notification, a
             this.y = bounds.y;
         } else if (this.y > bounds.height - this.image.height) {
             this.y = bounds.height - this.image.height;
+        }
+    };
+
+    Player.prototype.draw = function(context) {
+        // A scripted ending draws the ship itself.
+        if (!this.hidden) {
+            GameObject.prototype.draw.call(this, context);
         }
     };
 

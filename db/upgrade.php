@@ -287,6 +287,59 @@ function xmldb_quizgame_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026102205, 'quizgame');
     }
 
+    if ($oldversion < 2026102206) {
+        // More boss finale endings: the bosses a Random finale picks from (all of them) and the editable
+        // text of the new endings (empty: built-in). Step 2026102207 turns the pool into the enabled bosses.
+        $table = new xmldb_table('quizgame');
+        $pool = 'big,swarm,tow,selfdestruct,blackhole,pumpkin';
+        $fields = [
+            new xmldb_field('sassybosspool', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, $pool, 'sassyreadfirst'),
+            new xmldb_field('sassytowlines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassybosspool'),
+            new xmldb_field('sassydestructlines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassytowlines'),
+            new xmldb_field('sassyblackholelines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassydestructlines'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_mod_savepoint(true, 2026102206, 'quizgame');
+    }
+
+    if ($oldversion < 2026102207) {
+        // Every boss is switched on or off, and the finale always picks one of the enabled bosses at random.
+        // An activity set to one boss keeps just that boss; a Random one keeps its pool. The score eater is
+        // gone: the jack-o'-lantern takes its place in both.
+        $table = new xmldb_table('quizgame');
+        $field = new xmldb_field('sassypumpkinlines', XMLDB_TYPE_TEXT, null, null, null, null, null, 'sassyblackholelines');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        $style = new xmldb_field('sassybossstyle');
+        if ($dbman->field_exists($table, $style)) {
+            // Self-contained on purpose (lib.php may change): restore has the same mapping in
+            // quizgame_upgrade_boss_pool().
+            $styles = [0 => 'big', 1 => 'swarm', 3 => 'pumpkin', 4 => 'tow', 5 => 'selfdestruct', 6 => 'blackhole'];
+            $records = $DB->get_recordset('quizgame', null, 'id', 'id, sassybossstyle, sassybosspool');
+            foreach ($records as $record) {
+                $pool = $styles[(int) $record->sassybossstyle] ?? str_replace('eater', 'pumpkin', (string) $record->sassybosspool);
+                $DB->set_field('quizgame', 'sassybosspool', $pool, ['id' => $record->id]);
+            }
+            $records->close();
+            $dbman->drop_field($table, $style);
+        }
+        $field = new xmldb_field('sassyeaterlines');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->drop_field($table, $field);
+        }
+        $pool = 'big,swarm,tow,selfdestruct,blackhole,pumpkin';
+        $field = new xmldb_field('sassybosspool', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, $pool, 'sassyreadfirst');
+        $dbman->change_field_default($table, $field);
+
+        upgrade_mod_savepoint(true, 2026102207, 'quizgame');
+    }
+
     // Final return of upgrade result (true, all went good) to Moodle.
     return true;
 }

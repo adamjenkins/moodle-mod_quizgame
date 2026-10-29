@@ -288,6 +288,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'endinglines' => [],
         ] + $this->no_rewards();
         $result = $this->answer(1, 'levelstart');
         $this->assertEquals(
@@ -329,6 +330,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'endinglines' => [],
         ] + $this->no_rewards(), $result['effects']);
 
         // Starting level 2 closes level 1, whose correct answer was let go: -1000 more, -1300 in all.
@@ -349,6 +351,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'endinglines' => [],
         ] + $this->no_rewards(), $result['effects']);
 
         // Shooting during the reading time is blocked, and the one-off effects are gone.
@@ -368,7 +371,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'sassy' => 1,
             'sassywrongtrigger' => 1,
             'sassybosslimit' => 2,
-            'sassybossstyle' => 1,
+            'sassybosspool' => 'swarm',
             'sassyswarmsize' => 25,
             'sassypenalties' => 'returnfire',
             'sassybosslines' => 'Bye',
@@ -394,6 +397,7 @@ final class external_test extends \core_external\tests\externallib_testcase {
             'drainrate' => 0.0,
             'boss' => 'swarm',
             'swarmsize' => 25,
+            'endinglines' => [],
         ] + $this->no_rewards(), $result['effects']);
 
         // Everything after the boss is done, and the recorded score is 0.
@@ -402,6 +406,37 @@ final class external_test extends \core_external\tests\externallib_testcase {
         $this->assertEquals(
             ['done', 0.0, 'swarm', ''],
             [$result['result'], $result['score'], $effects['boss'], $effects['penalty']]
+        );
+        $id = mod_quizgame_external::update_score($this->quizgame->id, 5000);
+        $this->assertEquals(0, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));
+    }
+
+    /**
+     * A scripted ending (self-destruct) passes the returns description with its text, and records 0.
+     */
+    public function test_answer_effects_scripted_ending(): void {
+        global $DB;
+        $this->set_settings([
+            'sassy' => 1,
+            'sassywrongtrigger' => 1,
+            'sassybosslimit' => 2,
+            'sassybosspool' => 'selfdestruct',
+            'sassypenalties' => 'returnfire',
+            'sassybosslines' => 'Bye',
+            'sassydestructlines' => "Boom soon\nOr not",
+        ]);
+        $this->setUser($this->student);
+        $this->render_game();
+        mod_quizgame_external::start_game($this->quizgame->id);
+
+        $this->assertEquals(1000.0, $this->answer(1, 'shoot', $this->token(true))['score']);
+        $this->answer(2, 'shoot', $this->token(false));
+        $result = $this->answer(2, 'shoot', $this->token(false));
+        $effects = $result['effects'];
+        $this->assertEquals(
+            [0.0, 'boss', 'selfdestruct', 0, ['Bye'], ['Boom soon', 'Or not']],
+            [$result['score'], $effects['penalty'], $effects['boss'], $effects['swarmsize'], $effects['messages'],
+                $effects['endinglines']]
         );
         $id = mod_quizgame_external::update_score($this->quizgame->id, 5000);
         $this->assertEquals(0, $DB->get_field('quizgame_scores', 'score', ['id' => $id]));

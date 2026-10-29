@@ -122,13 +122,29 @@ resets every game.
   Decoys, return fire and score drain last until the player leaves cheater mode.
 - **Boss finale**: the offence numbered *Offences before the boss finale* (default 4)
   ends the game with a score of 0 after the boss lines ("This game is becoming more and
-  more like life. And you know what? Life ain't fair."). *Boss finale style*:
+  more like life. And you know what? Life ain't fair."). The boss is picked at random from
+  the *Enabled bosses* (all six for a new activity); with none enabled there is no boss
+  finale and later offences keep applying penalties.
   - *Big boss*: a boss ship twice the normal size weaves above the player for 3 to 5
     seconds (the player's shots spark off it), then destroys the player's ship with a huge
     laser beam.
   - *Swarm*: *Swarm size* (default 20) small ships pour in and attack non-stop until the
     player has lost every life.
-  - *Random*: either, chosen by the server.
+  - *Tow truck*: a space tow truck reverses in, hooks the player's ship, puts up a sign
+    ("Illegally parked in the guessing zone.") and drags the ship away, the score towed
+    behind it.
+  - *Self-destruct*: red alert, a warning ("Guessing detected. Self-destruct sequence
+    initiated."), a 3-2-1 countdown, then the ship goes out with a sad little puff of smoke
+    ("Well, that was anticlimactic. Like your effort.").
+  - *Black hole*: a black hole swallows the enemy ships and shots, the player's ship and
+    then the score, digit by digit ("Your points have crossed the event horizon.").
+  - *Jack-o'-lantern*: a jack-o'-lantern appears in the middle of the screen and laughs at
+    the player ("Mwa-ha-ha-ha-ha!"), then swoops down and eats the ship ("Trick or treat?
+    Definitely trick.").
+
+  The last four play out in about 6 to 8 seconds with no player control; their text is
+  edited in *Tow truck text*, *Self-destruct text* (warning, then the follow-up line),
+  *Black hole text* and *Jack-o'-lantern text* (laugh, then the line after eating).
 
 Every penalty start pauses the game on a message until the player presses fire (presses in
 the first second of each message are ignored, so mashing fire does not skip it unread). The

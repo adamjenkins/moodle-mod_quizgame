@@ -214,12 +214,16 @@ final class backup_restore_test extends \advanced_testcase {
             'sassymaxdecoys' => 4,
             'sassydrainrate' => 250,
             'sassydrainincrease' => 75,
-            'sassybossstyle' => 2,
             'sassyswarmsize' => 30,
             'sassytaunts' => "Taunt one\nTaunt || two",
             'sassydecoylabels' => "Nope\nNah",
             'sassybosslines' => 'The end || Really',
             'sassyreadfirst' => 'Slow down || Read it',
+            'sassybosspool' => 'swarm,tow,blackhole',
+            'sassypumpkinlines' => 'Boo || Crunch',
+            'sassytowlines' => 'Towed',
+            'sassydestructlines' => "Bye\nPuff",
+            'sassyblackholelines' => 'Gone',
         ];
         $this->assert_settings_restore($settings);
     }
@@ -300,15 +304,35 @@ final class backup_restore_test extends \advanced_testcase {
             'wrongpenalties' => '1,2,x',
             'rewardbonusships' => 500,
             'playwidth' => 999,
+            'sassybosspool' => 'tow,bogus,eater',
         ]);
 
         $newcourseid = $this->backup_and_restore(backup::TYPE_1COURSE, $course->id, $course->category, get_admin()->id);
 
         $restored = $DB->get_record('quizgame', ['course' => $newcourseid], '*', MUST_EXIST);
         $this->assertEquals(
-            [100000, 100000, '300', 10, 60],
+            [100000, 100000, '300', 10, 60, 'tow'],
             [$restored->pointscorrect, $restored->misspenalty, $restored->wrongpenalties, $restored->rewardbonusships,
-                $restored->playwidth]
+                $restored->playwidth, $restored->sassybosspool]
         );
+    }
+
+    /**
+     * A record or backup with a boss finale style gets the matching enabled bosses.
+     */
+    public function test_upgrade_boss_pool(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/quizgame/lib.php');
+        $cases = [
+            [['sassybossstyle' => 0], 'big'],
+            [['sassybossstyle' => 1, 'sassybosspool' => 'tow'], 'swarm'],
+            [['sassybossstyle' => 3], 'pumpkin'],
+            [['sassybossstyle' => 5], 'selfdestruct'],
+            [['sassybossstyle' => 2], 'big,swarm,tow,selfdestruct,blackhole,pumpkin'],
+            [['sassybossstyle' => 2, 'sassybosspool' => 'big,eater,blackhole'], 'big,pumpkin,blackhole'],
+        ];
+        foreach ($cases as [$record, $expected]) {
+            $this->assertEquals($expected, quizgame_upgrade_boss_pool((object) $record));
+        }
     }
 }

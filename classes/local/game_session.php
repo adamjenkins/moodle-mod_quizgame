@@ -50,6 +50,17 @@ class game_session {
     /** @var string[] Higher-tier penalties in severity order (the "In order" sequence). */
     const PENALTIES = ['decoys', 'reversed', 'dodge', 'returnfire', 'drain'];
 
+    /** @var string[] The bosses of the boss finale, in form order; the enabled ones are in sassybosspool. */
+    const ENDINGS = ['big', 'swarm', 'tow', 'selfdestruct', 'blackhole', 'pumpkin'];
+
+    /** @var string[] The text setting of each boss that shows text while it plays (default: lang sassy_<name>_default). */
+    const ENDING_LINES = [
+        'tow' => 'sassytowlines',
+        'selfdestruct' => 'sassydestructlines',
+        'blackhole' => 'sassyblackholelines',
+        'pumpkin' => 'sassypumpkinlines',
+    ];
+
     /** @var array Settings used when a quizgame record lacks the column (older records, tests). */
     const DEFAULTS = [
         'pointscorrect' => self::POINTS,
@@ -67,8 +78,8 @@ class game_session {
         'sassymaxdecoys' => 3,
         'sassydrainrate' => 100,
         'sassydrainincrease' => 50,
-        'sassybossstyle' => 0,
         'sassyswarmsize' => 20,
+        'sassybosspool' => 'big,swarm,tow,selfdestruct,blackhole,pumpkin',
         // Rewards stay off for a record without the columns.
         'rewards' => 0,
         'rewardcombo' => 1,
@@ -226,8 +237,8 @@ class game_session {
     /**
      * Bring settings that did not come through the settings form (a restored backup) within the form's rules.
      *
-     * Whole numbers are clamped to INT_RANGES and an invalid wrong-hit schedule falls back to the default.
-     * The game clamps again when it reads them, so older records are safe too.
+     * Whole numbers are clamped to INT_RANGES, an invalid wrong-hit schedule falls back to the default
+     * and the enabled bosses keep only known ones. The game clamps again when it reads them, so older records are safe too.
      *
      * @param stdClass $data quizgame record (changed in place; fields it lacks are left out)
      */
@@ -240,6 +251,20 @@ class game_session {
         if (isset($data->wrongpenalties)) {
             $data->wrongpenalties = self::normalise_schedule((string) $data->wrongpenalties);
         }
+        if (isset($data->sassybosspool)) {
+            $data->sassybosspool = implode(',', self::ending_pool((string) $data->sassybosspool));
+        }
+    }
+
+    /**
+     * The known bosses in a comma-separated list of boss keys, in ENDINGS order.
+     *
+     * @param string $list e.g. "big,tow"
+     * @return string[] boss keys; empty when the list names none
+     */
+    public static function ending_pool(string $list): array {
+        $keys = array_map('trim', explode(',', $list));
+        return array_values(array_intersect(self::ENDINGS, $keys));
     }
 
     /**
@@ -610,8 +635,9 @@ class game_session {
      *
      * Keys: messages (string[]), penalty (key started by the last response, '' none, 'boss'),
      * cheater (bool), readtime (int seconds), decoys ([{text, token}]), dodge (bool), reversed (bool),
-     * aggression (int 0..5), drainrate (float points/s), boss ('' | 'big' | 'swarm'), swarmsize (int):
-     * all empty or zero when the Sassy enhancements are off. Rewards: multiplier (int, 1 when combos are
+     * aggression (int 0..5), drainrate (float points/s), boss ('' or an ENDINGS key), swarmsize (int),
+     * endinglines (string[], the text the ending shows while it plays): all empty or zero when the Sassy
+     * enhancements are off. Rewards: multiplier (int, 1 when combos are
      * off), combo ('' | 'up' | 'break', changed by this response), lives (int), lifegained (bool),
      * bonusships ([{text, token}], levelstart only), praise (string, '' none): zero or empty when off.
      *
@@ -639,6 +665,7 @@ class game_session {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'endinglines' => [],
         ];
         $data = $this->data();
         if (empty($data['attempt']) || !$this->sassy()) {
@@ -659,7 +686,22 @@ class game_session {
             'drainrate' => (float) $attempt['drainrate'],
             'boss' => $boss,
             'swarmsize' => $boss === 'swarm' ? $this->int_setting('sassyswarmsize') : 0,
+            'endinglines' => $this->ending_lines($boss),
         ] + $effects;
+    }
+
+    /**
+     * The text an ending shows while it plays, one entry per line of its setting (or of the default).
+     *
+     * @param string $boss ending key, '' for none
+     * @return string[] formatted lines; empty for an ending without text
+     */
+    protected function ending_lines(string $boss): array {
+        if (!isset(self::ENDING_LINES[$boss])) {
+            return [];
+        }
+        $field = self::ENDING_LINES[$boss];
+        return array_column($this->message_list($field, 'sassy_' . substr($field, 5) . '_default', false), 0);
     }
 
     /**
@@ -1281,7 +1323,8 @@ class game_session {
         if ($attempt['offences'] <= 1) {
             return 'readfirst';
         }
-        if ($attempt['offences'] >= $this->int_setting('sassybosslimit')) {
+        // With no boss enabled there is no boss finale: the penalties go on.
+        if ($attempt['offences'] >= $this->int_setting('sassybosslimit') && $this->enabled_bosses()) {
             return 'boss';
         }
         $enabled = $this->enabled_penalties();
@@ -1340,17 +1383,32 @@ class game_session {
         $attempt['score'] = 0.0;
         $attempt['drainrate'] = 0.0;
         $attempt['over'] = true;
-        $style = (int) $this->setting('sassybossstyle');
-        if ($style == 2) {
-            $style = random_int(0, 1);
-        }
-        $attempt['boss'] = $style == 1 ? 'swarm' : 'big';
+        $attempt['boss'] = $this->choose_ending();
         $attempt['response']['penalty'] = 'boss';
         $lines = [];
         foreach ($this->message_list('sassybosslines', 'sassy_bosslines_default') as $steps) {
             $lines = array_merge($lines, $steps);
         }
         $this->queue_messages($lines);
+    }
+
+    /**
+     * The bosses enabled for the boss finale.
+     *
+     * @return string[] ENDINGS keys; empty when the boss finale is off
+     */
+    protected function enabled_bosses(): array {
+        return self::ending_pool((string) $this->setting('sassybosspool'));
+    }
+
+    /**
+     * The boss of this boss finale: one of the enabled bosses, at random.
+     *
+     * @return string ENDINGS key
+     */
+    protected function choose_ending(): string {
+        $pool = $this->enabled_bosses();
+        return $pool[random_int(0, count($pool) - 1)];
     }
 
     /**

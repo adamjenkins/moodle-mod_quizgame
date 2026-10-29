@@ -57,6 +57,7 @@ class restore_quizgame_activity_structure_step extends restore_activity_structur
      */
     protected function process_quizgame($data) {
         global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/quizgame/lib.php');
         require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
         $data = (object)$data;
@@ -80,6 +81,11 @@ class restore_quizgame_activity_structure_step extends restore_activity_structur
                     'The category needs to be re-selected.', backup::LOG_INFO);
             }
             $data->questioncategory = '';
+        }
+
+        // Backups from before bosses were switched on and off name one boss style instead.
+        if (isset($data->sassybossstyle)) {
+            $data->sassybosspool = quizgame_upgrade_boss_pool($data);
         }
 
         // A backup is untrusted input: keep the scoring, Sassy and rewards settings within the form's rules.

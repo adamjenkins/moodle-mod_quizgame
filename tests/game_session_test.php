@@ -146,6 +146,7 @@ final class game_session_test extends \advanced_testcase {
             'drainrate' => 0.0,
             'boss' => '',
             'swarmsize' => 0,
+            'endinglines' => [],
             'multiplier' => 1,
             'combo' => '',
             'lives' => 0,
@@ -294,7 +295,7 @@ final class game_session_test extends \advanced_testcase {
      */
     protected function play_to_boss(array $settings = []): array {
         $qid = $this->question('truefalse', 'true');
-        $session = $this->start_session($this->sassy_settings($settings + ['sassybosslimit' => 2]), true);
+        $session = $this->start_session($this->sassy_settings($settings + ['sassybosslimit' => 2, 'sassybosspool' => 'big']), true);
         $tokens = $this->answer_tokens($session, $qid);
 
         $session->answer($qid, 1, 'levelstart');
@@ -576,6 +577,8 @@ final class game_session_test extends \advanced_testcase {
             unset($quizgame->$column);
         }
         unset($quizgame->sassytaunts, $quizgame->sassydecoylabels, $quizgame->sassybosslines, $quizgame->rewardpraiselines);
+        unset($quizgame->sassytowlines, $quizgame->sassydestructlines, $quizgame->sassyblackholelines);
+        unset($quizgame->sassypumpkinlines);
         $session = new game_session($quizgame);
         $session->prepare(\context_module::instance($quizgame->cmid));
         $session->start();
@@ -1042,8 +1045,8 @@ final class game_session_test extends \advanced_testcase {
         $this->assertEquals(['deflect', 0.0], [$boss['result'], $boss['score']]);
         $effects = $boss['effects'];
         $this->assertEquals(
-            ['boss', 'big', 0, ['One', 'Two', 'Three']],
-            [$effects['penalty'], $effects['boss'], $effects['swarmsize'], $effects['messages']]
+            ['boss', 'big', 0, ['One', 'Two', 'Three'], []],
+            [$effects['penalty'], $effects['boss'], $effects['swarmsize'], $effects['messages'], $effects['endinglines']]
         );
 
         $actions = [
@@ -1067,7 +1070,7 @@ final class game_session_test extends \advanced_testcase {
      * The swarm boss: same game over, with the swarm size; the default boss lines are used when none are set.
      */
     public function test_boss_swarm(): void {
-        [$session, $qid, $tokens, $boss] = $this->play_to_boss(['sassybossstyle' => 1, 'sassyswarmsize' => 15]);
+        [$session, $qid, $tokens, $boss] = $this->play_to_boss(['sassybosspool' => 'swarm', 'sassyswarmsize' => 15]);
 
         $effects = $boss['effects'];
         $this->assertEquals(
@@ -1083,12 +1086,102 @@ final class game_session_test extends \advanced_testcase {
     }
 
     /**
-     * The random boss style is one of the two.
+     * The boss is one of the enabled bosses, all six by default.
      */
     public function test_boss_random_style(): void {
-        [, , , $boss] = $this->play_to_boss(['sassybossstyle' => 2]);
-        $this->assertContains($boss['effects']['boss'], ['big', 'swarm']);
+        [, , , $boss] = $this->play_to_boss(['sassybosspool' => 'big,swarm,tow,selfdestruct,blackhole,pumpkin']);
+        $this->assertContains($boss['effects']['boss'], ['big', 'swarm', 'tow', 'selfdestruct', 'blackhole', 'pumpkin']);
         $this->assertEquals($boss['effects']['boss'] == 'swarm' ? 20 : 0, $boss['effects']['swarmsize']);
+    }
+
+    /**
+     * With no boss enabled there is no boss finale: the offence at the limit is an ordinary penalty.
+     */
+    public function test_no_boss_enabled(): void {
+        [$session, $qid, $tokens, $last] = $this->play_to_boss(['sassybosspool' => '']);
+
+        $effects = $last['effects'];
+        $this->assertEquals(['', 0, []], [$effects['boss'], $effects['swarmsize'], $effects['endinglines']]);
+        $this->assertNotEquals('boss', $effects['penalty']);
+        $this->assertNotEquals(0.0, $last['score']);
+        // The game goes on.
+        $this->assertEquals('started', $session->answer($qid, 4, 'levelstart')['result']);
+        $this->assertEquals('hit', $session->answer($qid, 4, 'shoot', $tokens['1'][0])['result']);
+    }
+
+    /**
+     * Each scripted boss: the same game over with score 0, the boss lines first, and its own default text.
+     *
+     * @param string $ending the boss key, enabled alone
+     * @param string[] $lines its default text
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('scripted_ending_provider')]
+    public function test_boss_scripted_ending(string $ending, array $lines): void {
+        [$session, $qid, $tokens, $boss] = $this->play_to_boss(['sassybosspool' => $ending, 'sassybosslines' => 'Bye']);
+
+        $effects = $boss['effects'];
+        $this->assertEquals(
+            [0.0, 'boss', $ending, 0, ['Bye'], $lines],
+            [$boss['score'], $effects['penalty'], $effects['boss'], $effects['swarmsize'], $effects['messages'],
+                $effects['endinglines']]
+        );
+        $result = $session->answer($qid, 4, 'shoot', $tokens['1'][0]);
+        $this->assertEquals(['done', 0.0, $ending], [$result['result'], $result['score'], $result['effects']['boss']]);
+        $this->assertEquals(0.0, $session->finish()[0]);
+    }
+
+    /**
+     * The four scripted bosses with their default text.
+     *
+     * @return array
+     */
+    public static function scripted_ending_provider(): array {
+        return [
+            'tow truck' => ['tow', ['Illegally parked in the guessing zone.']],
+            'self-destruct' => ['selfdestruct', [
+                'Guessing detected. Self-destruct sequence initiated.',
+                'Well, that was anticlimactic. Like your effort.',
+            ]],
+            'black hole' => ['blackhole', ['Your points have crossed the event horizon.']],
+            'jack-o-lantern' => ['pumpkin', ['Mwa-ha-ha-ha-ha!', 'Trick or treat? Definitely trick.']],
+        ];
+    }
+
+    /**
+     * A boss's text setting replaces its default, formatted like the other messages.
+     */
+    public function test_boss_ending_text(): void {
+        [, , , $boss] = $this->play_to_boss([
+            'sassybosspool' => 'tow',
+            'sassytowlines' => "No <b>parking</b>\n\nTowed!",
+        ]);
+        $this->assertEquals(['No parking', 'Towed!'], $boss['effects']['endinglines']);
+    }
+
+    /**
+     * The boss is picked at random from the enabled bosses only.
+     */
+    public function test_choose_ending(): void {
+        $choose = function (array $settings): string {
+            $method = new \ReflectionMethod(game_session::class, 'choose_ending');
+            return $method->invoke(new game_session((object) $settings));
+        };
+        $seen = [];
+        for ($i = 0; $i < 40; $i++) {
+            $seen[$choose(['sassybosspool' => 'tow,blackhole'])] = true;
+        }
+        $this->assertEqualsCanonicalizing(['tow', 'blackhole'], array_keys($seen));
+        $this->assertEquals('pumpkin', $choose(['sassybosspool' => 'pumpkin,nonsense']));
+        // A record without the column has every boss enabled.
+        $this->assertContains($choose([]), game_session::ENDINGS);
+    }
+
+    /**
+     * The ending pool keeps only known endings, in their usual order.
+     */
+    public function test_ending_pool(): void {
+        $this->assertEquals(['big', 'tow', 'blackhole'], game_session::ending_pool('blackhole, tow,bogus,big'));
+        $this->assertEquals([], game_session::ending_pool(''));
     }
 
     /**

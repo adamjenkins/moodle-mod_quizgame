@@ -31,12 +31,16 @@
         <FIELD NAME="sassymaxdecoys" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="3" SEQUENCE="false" COMMENT="Maximum number of decoy ships per question"/>
         <FIELD NAME="sassydrainrate" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="100" SEQUENCE="false" COMMENT="Score drain start rate in points per second"/>
         <FIELD NAME="sassydrainincrease" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="50" SEQUENCE="false" COMMENT="Score drain rate increase per further wrong hit, in percent"/>
-        <FIELD NAME="sassybossstyle" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Boss finale style: 0 big boss, 1 swarm, 2 random"/>
         <FIELD NAME="sassyswarmsize" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="20" SEQUENCE="false" COMMENT="Number of ships in a swarm boss finale"/>
         <FIELD NAME="sassytaunts" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Taunt messages, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassydecoylabels" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Decoy ship labels, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassybosslines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Boss finale lines, one per line (empty: built-in defaults)"/>
         <FIELD NAME="sassyreadfirst" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Read it first messages, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassybosspool" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="big,swarm,tow,selfdestruct,blackhole,pumpkin" SEQUENCE="false" COMMENT="Comma-separated keys of the enabled bosses; the boss finale picks one at random (none: no boss finale)"/>
+        <FIELD NAME="sassytowlines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Tow truck ending text, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassydestructlines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Self-destruct ending text, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassyblackholelines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Black hole ending text, one per line (empty: built-in defaults)"/>
+        <FIELD NAME="sassypumpkinlines" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Jack-o-lantern ending text, one per line (empty: built-in defaults)"/>
         <FIELD NAME="rewards" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether rewards for good play are enabled"/>
         <FIELD NAME="rewardcombo" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether the combo multiplier is enabled"/>
         <FIELD NAME="rewardmaxmult" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="4" SEQUENCE="false" COMMENT="Maximum combo multiplier"/>

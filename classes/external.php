@@ -217,8 +217,12 @@ class mod_quizgame_external extends external_api {
             'reversed' => new external_value(PARAM_BOOL, 'whether left and right are swapped this level'),
             'aggression' => new external_value(PARAM_INT, 'return fire aggression level, 0 to 5'),
             'drainrate' => new external_value(PARAM_FLOAT, 'score drain in points per second, 0 for none'),
-            'boss' => new external_value(PARAM_ALPHA, 'boss finale style: empty, big or swarm'),
+            'boss' => new external_value(PARAM_ALPHA, 'boss finale ending: empty, big, swarm, eater, tow, selfdestruct, blackhole'),
             'swarmsize' => new external_value(PARAM_INT, 'number of swarm ships when boss is swarm, else 0'),
+            'endinglines' => new external_multiple_structure(
+                new external_value(PARAM_RAW, 'plain text line, drawn on the canvas'),
+                'text the boss finale ending shows while it plays, in order; empty for none'
+            ),
             'multiplier' => new external_value(PARAM_INT, 'current combo multiplier, 1 when combos are off'),
             'combo' => new external_value(PARAM_ALPHA, 'combo change by this response: empty, up or break'),
             'lives' => new external_value(PARAM_INT, 'lives the server counts, 0 when rewards are off'),

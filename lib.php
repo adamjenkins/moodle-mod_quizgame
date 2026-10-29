@@ -69,11 +69,40 @@ function quizgame_sassy_penalty_keys(): array {
 }
 
 /**
+ * The bosses of the boss finale, as stored in the sassybosspool column (the enabled ones).
+ *
+ * @return string[] Boss keys
+ */
+function quizgame_sassy_ending_keys(): array {
+    return array_values(\mod_quizgame\local\game_session::ENDINGS);
+}
+
+/**
+ * The enabled bosses for a record saved with a boss finale style (before bosses were switched on and off).
+ *
+ * A single style becomes that boss alone; Random (2) keeps the pool it picked from, or gets every boss
+ * when the record is older than the pool. The score eater (3) was replaced by the jack-o'-lantern.
+ *
+ * @param stdClass $record with sassybossstyle and, from version 2026102206, sassybosspool
+ * @return string comma-separated boss keys
+ */
+function quizgame_upgrade_boss_pool(stdClass $record): string {
+    $styles = [0 => 'big', 1 => 'swarm', 3 => 'pumpkin', 4 => 'tow', 5 => 'selfdestruct', 6 => 'blackhole'];
+    $style = (int) $record->sassybossstyle;
+    if (isset($styles[$style])) {
+        return $styles[$style];
+    }
+    $pool = isset($record->sassybosspool) ? (string) $record->sassybosspool : 'big,swarm,tow,selfdestruct,blackhole,pumpkin';
+    return str_replace('eater', 'pumpkin', $pool);
+}
+
+/**
  * Convert the settings form data into the stored form of the scoring and Sassy settings.
  *
  * Strips spaces from the wrong-hit penalty schedule and turns the sassypenalty_<key> checkboxes
- * into the comma-separated sassypenalties column. Data without the checkboxes (not from the
- * settings form, e.g. a data generator) keeps any sassypenalties value it already has.
+ * into the comma-separated sassypenalties column, and the sassyending_<key> checkboxes into the
+ * sassybosspool column. Data without the checkboxes (not from the settings form, e.g. a data
+ * generator) keeps any value it already has.
  *
  * @param stdClass $data Instance data, changed in place
  */
@@ -96,6 +125,21 @@ function quizgame_process_options(stdClass $data): void {
     }
     if ($hascheckboxes) {
         $data->sassypenalties = implode(',', $enabled);
+    }
+
+    $hascheckboxes = false;
+    $enabled = [];
+    foreach (quizgame_sassy_ending_keys() as $key) {
+        $element = 'sassyending_' . $key;
+        if (property_exists($data, $element)) {
+            $hascheckboxes = true;
+            if (!empty($data->$element)) {
+                $enabled[] = $key;
+            }
+        }
+    }
+    if ($hascheckboxes) {
+        $data->sassybosspool = implode(',', $enabled);
     }
 }
 

@@ -5,6 +5,31 @@ Entries are ordered newest-first. Dates reflect the release or commit date.
 
 ---
 
+## [2026102207] — Unreleased — Four comical bosses, every boss switched on or off
+
+### Added
+- Four more **boss finale** bosses, each a short scripted scene (about 6 to 8 seconds)
+  with no player control, ending on score 0 and the usual GAME OVER: **Tow truck** (the
+  ship is towed away for illegal parking, the score dragged behind it), **Self-destruct** (a
+  3-2-1 countdown, then a sad little puff of smoke), **Black hole** (ships, shots, the
+  player's ship and finally the score are pulled in) and **Jack-o'-lantern** (it appears in
+  the middle of the screen, laughs at the player, then swoops down and eats the ship). Drawn
+  on the canvas; their beeps, laughs and crunches are synthesised tones, so no new assets.
+- Each new boss's text is an editable setting with an English default (*Tow truck text*,
+  *Self-destruct text*, *Black hole text*, *Jack-o'-lantern text*), shown while that boss is
+  enabled. New columns `sassybosspool`, `sassytowlines`, `sassydestructlines`,
+  `sassyblackholelines` (upgrade step 2026102206) and `sassypumpkinlines` (2026102207),
+  backed up and restored; restore keeps only known bosses.
+
+### Changed
+- **Enabled bosses** replaces *Boss finale style*: a checkbox per boss, like the enabled
+  penalties (all on for new activities). The finale always picks one of the enabled bosses at
+  random; with none enabled there is no boss finale and later offences keep applying
+  penalties. Upgrade step 2026102207 gives each activity the boss it had (a Random one gets
+  every boss) and drops the `sassybossstyle` column; older backups are converted the same
+  way on restore. The score is set to 0 by the server when the finale starts, whichever boss
+  plays.
+
 ## [2026102205] — Unreleased — Fixed play area width, speed-ups off by default
 
 ### Added

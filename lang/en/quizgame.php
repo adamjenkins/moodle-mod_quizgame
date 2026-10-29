@@ -178,6 +178,7 @@ Reading pays off, doesn\'t it?';
 $string['rewards_redemption_msg'] = 'Redemption! Welcome back, pilot.';
 $string['rewardshdr'] = 'Rewards';
 $string['sassy'] = 'Sassy enhancements';
+$string['sassy_blackholelines_default'] = 'Your points have crossed the event horizon.';
 $string['sassy_bosslines_default'] = 'This game is becoming more and more like life. And you know what? Life ain\'t fair.
 Are you ready? || Well, I\'ll take that as a yes.';
 $string['sassy_continue'] = 'Press fire to continue';
@@ -185,13 +186,17 @@ $string['sassy_decoylabels_default'] = 'Not me
 Definitely not this one
 Pick me! (don\'t)
 ¯\\_(ツ)_/¯';
+$string['sassy_destructlines_default'] = 'Guessing detected. Self-destruct sequence initiated.
+Well, that was anticlimactic. Like your effort.';
 $string['sassy_enable'] = 'Enable Sassy enhancements';
 $string['sassy_gameover'] = 'GAME OVER';
 $string['sassy_help'] = 'Sassy enhancements detect guessing. After a number of wrong hits (across questions), the player enters cheater mode: the game answers back with a snarky message and applies a penalty. A question answered with no wrong hits resets the count, and enough such clean questions end cheater mode.
 
-Each time cheater mode starts again is an offence. The first offence is always "Read it first" (the question is shown alone for a few seconds before the ships appear). Later offences apply the penalties enabled below, and the offence set as the boss finale limit ends the game with a score of 0.
+Each time cheater mode starts again is an offence. The first offence is always "Read it first" (the question is shown alone for a few seconds before the ships appear). Later offences apply the penalties enabled below, and the offence set as the boss finale limit ends the game with a score of 0 (when at least one boss is enabled).
 
 The server decides every penalty and keeps the score, so they cannot be skipped in the browser. Nothing about cheater mode is stored or reported to teachers; it resets every game.';
+$string['sassy_pumpkinlines_default'] = 'Mwa-ha-ha-ha-ha!
+Trick or treat? Definitely trick.';
 $string['sassy_readfirst_default'] = 'Take your time. No, really, I\'ll wait!
 Read the question, then shoot only the ship with the correct answer. Ships appear in a moment.';
 $string['sassy_reading'] = 'Read the question...';
@@ -203,29 +208,44 @@ Wait, what? Hey, are you even aiming?
 No, you\'re supposed to shoot the CORRECT answers!
 You know what might help? Thinking!
 I have an idea! How about READING the question?';
+$string['sassy_towlines_default'] = 'Illegally parked in the guessing zone.';
+$string['sassyblackholelines'] = 'Black hole text';
+$string['sassyblackholelines_help'] = 'The text shown while the black hole pulls the score in. Only the first line is used.
+
+Leave empty to use the built-in text.';
+$string['sassyboss_big'] = 'Big boss';
+$string['sassyboss_blackhole'] = 'Black hole';
+$string['sassyboss_pumpkin'] = 'Jack-o\'-lantern';
+$string['sassyboss_selfdestruct'] = 'Self-destruct';
+$string['sassyboss_swarm'] = 'Swarm';
+$string['sassyboss_tow'] = 'Tow truck';
 $string['sassybosslimit'] = 'Offences before the boss finale';
-$string['sassybosslimit_help'] = 'The offence that starts the boss finale, which ends the game with a score of 0. Offence 1 is always "Read it first", so the smallest value is 2. Default 4.';
+$string['sassybosslimit_help'] = 'The offence that starts the boss finale, which ends the game with a score of 0. Offence 1 is always "Read it first", so the smallest value is 2. Default 4. Only used while at least one boss is enabled.';
 $string['sassybosslines'] = 'Boss finale lines';
 $string['sassybosslines_help'] = 'The lines shown before the boss finale, one per line; the player presses fire to go to the next one. Write "Line one || Line two" for a two-step prompt: the second line follows on the next press, whatever the player does.
 
 Leave empty to use the built-in lines.';
-$string['sassybossstyle'] = 'Boss finale style';
-$string['sassybossstyle_big'] = 'Big boss';
-$string['sassybossstyle_help'] = 'How the boss finale plays out.
+$string['sassybosspool'] = 'Enabled bosses';
+$string['sassybosspool_help'] = 'The bosses of the boss finale. When the finale starts, the server picks one of the enabled bosses at random. With no boss enabled there is no boss finale: later offences keep applying penalties.
 
-* Big boss: a boss ship twice the normal size appears and destroys the player\'s ship with a huge laser beam.
+* Big boss: a boss ship twice the normal size weaves above the player for a few seconds, then destroys the player\'s ship with a huge laser beam.
 * Swarm: a swarm of small ships pours in and attacks non-stop until the player has lost every life.
-* Random: either one, chosen by the server each time.
+* Tow truck: a space tow truck hooks the player\'s ship and drags it away, with the score towed along behind.
+* Self-destruct: a countdown promises a huge explosion; the ship goes out with a sad little puff of smoke.
+* Black hole: a black hole swallows the enemy ships, the player\'s ship and then the score.
+* Jack-o\'-lantern: a grinning jack-o\'-lantern appears in the middle of the screen, laughs at the player, then swoops down and eats the ship.
 
-Either way the score drains to 0 and the game is over.';
-$string['sassybossstyle_random'] = 'Random';
-$string['sassybossstyle_swarm'] = 'Swarm';
+Whichever boss plays, the score is 0 and the game is over. The last four play out by themselves: the player has no control.';
 $string['sassycleanneeded'] = 'Clean questions to leave cheater mode';
 $string['sassycleanneeded_help'] = 'How many questions the player must answer with no wrong hits to leave cheater mode. Leaving cheater mode stops the decoy ships, return fire and score drain. Default 1.';
 $string['sassydecoylabels'] = 'Decoy ship labels';
 $string['sassydecoylabels_help'] = 'The labels of decoy ships, one per line; each decoy gets one at random.
 
 Leave empty to use the built-in labels.';
+$string['sassydestructlines'] = 'Self-destruct text';
+$string['sassydestructlines_help'] = 'The first line is the warning shown before the countdown; the second, if there is one, follows the sad little puff of smoke. Further lines are not used.
+
+Leave empty to use the built-in text.';
 $string['sassydrainincrease'] = 'Score drain increase per wrong hit (%)';
 $string['sassydrainincrease_help'] = 'How much faster the score drains with each further wrong hit in cheater mode, in percent. Default 50 (each wrong hit makes it drain 1.5 times as fast).';
 $string['sassydrainrate'] = 'Score drain start rate (points per second)';
@@ -255,6 +275,10 @@ $string['sassypenalty_dodge'] = 'Dodge round';
 $string['sassypenalty_drain'] = 'Score drain';
 $string['sassypenalty_returnfire'] = 'Return fire';
 $string['sassypenalty_reversed'] = 'Reversed controls';
+$string['sassypumpkinlines'] = 'Jack-o\'-lantern text';
+$string['sassypumpkinlines_help'] = 'The first line is the jack-o\'-lantern\'s laugh; the second, if there is one, follows once it has eaten the ship. Further lines are not used.
+
+Leave empty to use the built-in text.';
 $string['sassyreadfirst'] = 'Read it first messages';
 $string['sassyreadfirst_help'] = 'The messages shown at the first offence, before the question appears on its own for the reading time; one message per line, and the player presses fire to go to the next one. Write "Line one || Line two" for a two-step prompt. Leave empty for the built-in messages.';
 $string['sassyreadtime'] = 'Reading time for "Read it first" (seconds)';
@@ -265,6 +289,10 @@ $string['sassytaunts'] = 'Taunt messages';
 $string['sassytaunts_help'] = 'Messages shown when a decoy ship, dodge round, return fire or score drain penalty starts, one per line; one is chosen at random. The game pauses on the message until the player presses fire. Write "Line one || Line two" for a two-step prompt: the second line follows on the next press, whatever the player does.
 
 Leave empty to use the built-in messages. The messages for "Read it first" and reversed controls are fixed language strings, which can be changed with language customisation.';
+$string['sassytowlines'] = 'Tow truck text';
+$string['sassytowlines_help'] = 'The sign the tow truck puts up before it drags the player\'s ship away. Only the first line is used.
+
+Leave empty to use the built-in text.';
 $string['sassywrongtrigger'] = 'Wrong hits to trigger cheater mode';
 $string['sassywrongtrigger_help'] = 'How many wrong hits, counted across questions, start cheater mode. A question answered with no wrong hits resets the count to 0. In cheater mode, every further run of this many wrong hits is a new offence. Default 3.';
 $string['scalesnotsupported'] = 'Quizventure grades by game score, so scales are not supported. Choose Point or None.';

@@ -33,6 +33,8 @@ require_once($CFG->dirroot . '/lib/questionlib.php');
 require_once($CFG->dirroot . '/mod/quizgame/lib.php');
 require_once($CFG->dirroot . '/mod/quizgame/locallib.php');
 
+use mod_quizgame\local\game_session;
+
 /**
  * Module instance settings form
  * @copyright  2014 John Okely <john@moodle.com>
@@ -146,18 +148,13 @@ class mod_quizgame_mod_form extends moodleform_mod {
                 $sassyfields[] = 'sassypenaltiesgroup';
                 $sassyfields[] = 'sassyorder';
             } else if ($field === 'sassydrainincrease') {
-                $mform->addElement('select', 'sassybossstyle', get_string('sassybossstyle', 'quizgame'), [
-                    0 => get_string('sassybossstyle_big', 'quizgame'),
-                    1 => get_string('sassybossstyle_swarm', 'quizgame'),
-                    2 => get_string('sassybossstyle_random', 'quizgame'),
-                ]);
-                $mform->setDefault('sassybossstyle', 0);
-                $mform->addHelpButton('sassybossstyle', 'sassybossstyle', 'quizgame');
-                $sassyfields[] = 'sassybossstyle';
+                $this->add_sassy_ending_elements();
+                $sassyfields[] = 'sassyendingsgroup';
             }
         }
 
-        foreach (['sassyreadfirst', 'sassytaunts', 'sassydecoylabels', 'sassybosslines'] as $field) {
+        $textfields = ['sassyreadfirst', 'sassytaunts', 'sassydecoylabels', 'sassybosslines'];
+        foreach (array_merge($textfields, game_session::ENDING_LINES) as $field) {
             $mform->addElement('textarea', $field, get_string($field, 'quizgame'), ['rows' => 6, 'cols' => 60]);
             $mform->setType($field, PARAM_TEXT);
             // New instances start with the built-in list, so teachers can see and edit it.
@@ -169,8 +166,33 @@ class mod_quizgame_mod_form extends moodleform_mod {
         foreach ($sassyfields as $field) {
             $mform->hideIf($field, 'sassy', 'notchecked');
         }
-        // The swarm size only matters when a swarm can happen.
-        $mform->hideIf('sassyswarmsize', 'sassybossstyle', 'eq', 0);
+        // The swarm size and each boss's text only matter while that boss is enabled.
+        $mform->hideIf('sassyswarmsize', 'sassyending_swarm', 'notchecked');
+        foreach (game_session::ENDING_LINES as $ending => $field) {
+            $mform->hideIf($field, 'sassyending_' . $ending, 'notchecked');
+        }
+    }
+
+    /**
+     * Add the enabled-boss checkboxes (sassyending_<key>): the boss finale picks one of them at random.
+     */
+    protected function add_sassy_ending_elements(): void {
+        $mform = $this->_form;
+
+        $checkboxes = [];
+        foreach (quizgame_sassy_ending_keys() as $key) {
+            $checkboxes[] = $mform->createElement(
+                'advcheckbox',
+                'sassyending_' . $key,
+                '',
+                get_string('sassyboss_' . $key, 'quizgame')
+            );
+        }
+        $mform->addGroup($checkboxes, 'sassyendingsgroup', get_string('sassybosspool', 'quizgame'), '<br>', false);
+        $mform->addHelpButton('sassyendingsgroup', 'sassybosspool', 'quizgame');
+        foreach (quizgame_sassy_ending_keys() as $key) {
+            $mform->setDefault('sassyending_' . $key, 1);
+        }
     }
 
     /**
@@ -802,6 +824,14 @@ class mod_quizgame_mod_form extends moodleform_mod {
             $enabled = array_filter(array_map('trim', explode(',', (string) $defaultvalues['sassypenalties'])));
             foreach (quizgame_sassy_penalty_keys() as $key) {
                 $defaultvalues['sassypenalty_' . $key] = in_array($key, $enabled, true) ? 1 : 0;
+            }
+        }
+
+        // Likewise the enabled bosses.
+        if (isset($defaultvalues['sassybosspool'])) {
+            $enabled = game_session::ending_pool((string) $defaultvalues['sassybosspool']);
+            foreach (quizgame_sassy_ending_keys() as $key) {
+                $defaultvalues['sassyending_' . $key] = in_array($key, $enabled, true) ? 1 : 0;
             }
         }
 
